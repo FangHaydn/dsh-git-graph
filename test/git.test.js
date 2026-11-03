@@ -40,7 +40,7 @@ function run(cwd, args, options = {}) {
   });
 }
 
-async function repository(t) {
+async function repository(t, generate = async () => { throw new Error('Unexpected generation request'); }) {
   await mkdir(testDirectory, { recursive: true });
   const parent = await realpath(testDirectory);
   const root = await mkdtemp(path.join(parent, '.git-graph-test-'));
@@ -66,7 +66,7 @@ async function repository(t) {
   await git(['config', 'tag.gpgsign', 'false']);
   await git(['config', 'core.autocrlf', 'false']);
   await git(['config', 'core.hooksPath', path.join(ownedRoot, 'empty-hooks')]);
-  const service = new GitGraphService(run, async () => { throw new Error('Unexpected generation request'); });
+  const service = new GitGraphService(run, generate);
   const execute = request => service.execute(cwd, request);
   const put = async (name, text) => {
     const target = path.join(cwd, name);
@@ -101,6 +101,88 @@ async function mergeRepository(t, conflict = false) {
   if (conflict) assert.equal(result.code, 1);
   return { ...repo, base, feature, main };
 }
+
+test('generation prefers staged content and excludes subsequent working changes and untracked files', async t => {
+  let input;
+  const { execute, put, commit, git } = await repository(t, async value => { input = value; return 'fix: use staged changes'; });
+  await put('tracked.txt', 'base contents\n');
+  await commit();
+  await put('tracked.txt', 'staged contents\n');
+  await execute({ action: 'stage', paths: ['tracked.txt'] });
+  await put('tracked.txt', 'working contents\n');
+  await put('untracked.txt', 'untracked contents\n');
+  const before = (await git(['status', '--porcelain=v1', '-z'])).stdout;
+  const result = await execute({ action: 'generate', locale: 'zh' });
+  assert.equal(result.message, 'fix: use staged changes');
+  assert.equal(result.truncated, false);
+  assert.equal(input.source, 'staged');
+  assert.equal(input.locale, 'zh');
+  assert.match(input.diff, /\+staged contents/);
+  assert.doesNotMatch(input.diff, /working contents|untracked/);
+  assert.doesNotMatch(input.summary, /untracked/);
+  assert.equal((await git(['status', '--porcelain=v1', '-z'])).stdout, before);
+  assert.equal((await git(['show', ':tracked.txt'])).stdout, 'staged contents\n');
+});
+
+test('generation falls back to tracked working changes, deletions and untracked file contents', async t => {
+  let input;
+  const { execute, put, commit, git, cwd } = await repository(t, async value => { input = value; return 'feat: describe working changes'; });
+  await put('tracked.txt', 'base contents\n');
+  await put('deleted.txt', 'deleted contents\n');
+  await commit();
+  await put('tracked.txt', 'working contents\n');
+  const deleted = path.join(cwd, 'deleted.txt');
+  assert.equal(await realpath(deleted), deleted);
+  assert.equal(path.dirname(deleted), cwd);
+  await rm(deleted);
+  await put('新文件 with spaces.txt', 'new file contents\n');
+  const before = (await git(['status', '--porcelain=v1', '-z'])).stdout;
+  await execute({ action: 'generate' });
+  assert.equal(input.source, 'worktree');
+  assert.match(input.diff, /\+working contents/);
+  assert.match(input.diff, /-deleted contents/);
+  assert.match(input.diff, /\+new file contents/);
+  assert.match(input.summary, /新文件 with spaces\.txt/);
+  assert.equal((await git(['status', '--porcelain=v1', '-z'])).stdout, before);
+  assert.equal((await git(['diff', '--cached'])).stdout, '');
+});
+
+test('generation supports an unborn repository with only untracked files and then staged files', async t => {
+  const inputs = [];
+  const { execute, put, git } = await repository(t, async value => { inputs.push(value); return 'feat: add initial file'; });
+  await put('initial.txt', 'initial contents\n');
+  await execute({ action: 'generate' });
+  assert.equal(inputs[0].source, 'worktree');
+  assert.match(inputs[0].diff, /\+initial contents/);
+  assert.equal(file(await execute({ action: 'snapshot' }), 'initial.txt').index, '?');
+  await execute({ action: 'stage' });
+  await execute({ action: 'generate' });
+  assert.equal(inputs[1].source, 'staged');
+  assert.match(inputs[1].diff, /\+initial contents/);
+  assert.equal((await git(['rev-parse', '--verify', 'HEAD'], { allowFailure: true })).code, 128);
+});
+
+test('generation rejects a clean repository before calling the model', async t => {
+  const { execute, put, commit } = await repository(t);
+  await put('tracked.txt', 'unchanged contents\n');
+  await commit();
+  await assert.rejects(execute({ action: 'generate' }), /No changes to generate/);
+});
+
+test('generation caps combined untracked diff content and reports truncation', async t => {
+  let input;
+  const { execute, put } = await repository(t, async value => { input = value; return 'feat: add large files'; });
+  await put('a-large.txt', 'large contents\n'.repeat(8000));
+  await put('b-small.txt', 'later contents\n');
+  const result = await execute({ action: 'generate' });
+  assert.equal(input.source, 'worktree');
+  assert.equal(input.diff.length, 60000);
+  assert.match(input.diff, /\+large contents/);
+  assert.doesNotMatch(input.diff, /later contents/);
+  assert.match(input.summary, /a-large\.txt/);
+  assert.match(input.summary, /b-small\.txt/);
+  assert.equal(result.truncated, true);
+});
 
 test('unborn repository stages and unstages paths without creating HEAD or deleting worktree files', async t => {
   const { execute, put, git, cwd } = await repository(t);

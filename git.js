@@ -152,10 +152,24 @@ export class GitGraphService {
       }
       if (action === 'generate') {
         const status = parseStatus((await g(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).stdout);
-        if (!status.some(f => f.staged)) throw new Error('Stage changes before generating a commit message');
-        const diff = await g(['diff', '--cached', '--no-ext-diff', '--no-textconv', '--no-color', '--', '.'], { truncate: true });
-        const summary = await g(['diff', '--cached', '--stat']);
-        return { message: await this.generate({ diff: diff.stdout.slice(0, 60000), summary: summary.stdout, locale: request.locale, signal }), truncated: diff.truncated || diff.stdout.length > 60000 };
+        if (!status.length) throw new Error('No changes to generate a commit message');
+        const staged = status.some(f => f.staged), source = staged ? 'staged' : 'worktree';
+        const flags = staged ? ['--cached'] : [];
+        const diff = await g(['diff', ...flags, '--no-ext-diff', '--no-textconv', '--no-color', '--', '.'], { truncate: true });
+        const summary = await g(['diff', ...flags, '--no-ext-diff', '--no-textconv', '--stat'], { truncate: true });
+        let text = diff.stdout.slice(0, 60000), summaryText = summary.stdout;
+        let truncated = diff.truncated || summary.truncated || diff.stdout.length > 60000;
+        if (!staged) for (const file of status.filter(f => f.index === '?')) {
+          summaryText += `\nUntracked: ${JSON.stringify(file.path)}`;
+          if (text.length >= 60000) { truncated = true; continue; }
+          const patch = await g(['diff', '--no-index', '--no-ext-diff', '--no-textconv', '--no-color', '--', '/dev/null', fileValue(file.path)], { allowFailure: true, truncate: true });
+          if (patch.code > 1) throw new Error(patch.stderr);
+          const combined = text + '\n' + patch.stdout;
+          text = combined.slice(0, 60000);
+          truncated ||= patch.truncated || combined.length > 60000;
+        }
+        truncated ||= summaryText.length > 60000;
+        return { message: await this.generate({ source, diff: text, summary: summaryText.slice(0, 60000), locale: request.locale, signal }), truncated };
       }
       if (action === 'checkout') {
         if (request.branch) {
