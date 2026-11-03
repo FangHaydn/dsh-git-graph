@@ -1,0 +1,4 @@
+- insert:
+    - id: local-git-graph
+      name: '@local/dsh-git-graph'
+      config: {}
