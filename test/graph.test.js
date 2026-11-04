@@ -12,8 +12,8 @@ const context = vm.createContext({
     } : {});
   } } },
 });
-vm.runInContext(source.replace('    function RefBadges(', '    globalThis.graphTest = { layoutGraph, Graph };\n    function RefBadges('), context);
-const { layoutGraph, Graph } = context.graphTest;
+vm.runInContext(source.replace('    function RefBadges(', '    globalThis.graphTest = { layoutGraph, Graph, displayRefs, RefBadges, css };\n    function RefBadges('), context);
+const { layoutGraph, Graph, displayRefs, RefBadges, css } = context.graphTest;
 const commit = (hash, ...parents) => ({ hash, parents });
 const main = hash => [{ kind: 'branch', name: 'main', hash }];
 const fixture = [
@@ -103,4 +103,60 @@ test('empty, linear and truncated histories remain continuous', () => {
       for (const edge of row.edges) assert.ok(edge.x1 >= 0 && edge.x2 >= 0);
     }
   }
+});
+
+test('branch labels fold local and same-named remote refs into a single value', () => {
+  // displayRefs runs in a vm realm, so normalise its arrays before comparing.
+  const plain = value => JSON.parse(JSON.stringify(value));
+  const items = [
+    { kind: 'branch', name: 'main' },
+    { kind: 'remote', name: 'origin/main' },
+    { kind: 'remote', name: 'origin/feature' },
+    { kind: 'tag', name: 'v1.0.0' },
+    { kind: 'stash', name: 'stash@{0}' },
+  ];
+  assert.deepEqual(plain(displayRefs(items)), [
+    { kind: 'branch', name: 'main', label: 'main | origin' },
+    { kind: 'remote', name: 'origin/feature', label: 'origin/feature' },
+    { kind: 'tag', name: 'v1.0.0', label: 'v1.0.0' },
+    { kind: 'stash', name: 'stash@{0}', label: 'stash@{0}' },
+  ]);
+});
+
+test('compact badges render every value without kind prefixes or a count placeholder', () => {
+  const items = [{kind:'branch',name:'main'}, {kind:'remote',name:'origin/main'},
+    {kind:'tag',name:'v1'}, {kind:'stash',name:'stash@{0}'}, {kind:'remote',name:'upstream/other'}];
+  for (const compact of [false, true]) {
+    const badges = RefBadges({items,head:true,color:0,t:kind=>kind,compact});
+    assert.equal(badges.children.length, 5);
+    assert.deepEqual(Array.from(badges.children, badge=>badge.children[1].children[0]),
+      ['HEAD','main | origin','upstream/other','v1','stash@{0}']);
+    assert.ok(badges.children.every(badge=>badge.props.title));
+  }
+});
+
+test('matching branch labels include all remote names', () => {
+  const labels = displayRefs([{kind:'remote',name:'origin/main'}, {kind:'branch',name:'main'},
+    {kind:'remote',name:'upstream/main'}]);
+  assert.equal(labels.length, 1);
+  assert.equal(labels[0].label, 'main | origin, upstream');
+});
+
+test('the main conversation tab hides chat chrome and lets the view own scrolling', () => {
+  assert.ok(css.includes('[data-conversation-content]:has([data-slot="conversation.view"] .dgg) [data-conversation-region="composer"]{display:none!important}'),
+    'The chat composer, task dock and usage meter share the composer region');
+  assert.ok(css.includes('[data-conversation-content]:has([data-slot="conversation.view"] .dgg) [data-conversation-scroll]{overflow:hidden!important}'),
+    'The outer conversation scroller must yield to the panel');
+  assert.ok(css.includes('[data-conversation-scroll] > [data-slot="conversation.session"] > div{flex:1 1 0!important;min-height:0!important;overflow:hidden!important}'),
+    'The active view area must take a bounded height so the history list can scroll');
+});
+
+test('branch labels keep the remote name and support slashed branch names', () => {
+  const plain = value => JSON.parse(JSON.stringify(value));
+  assert.deepEqual(plain(displayRefs([{ kind: 'branch', name: 'feature/x' }, { kind: 'remote', name: 'upstream/feature/x' }])),
+    [{ kind: 'branch', name: 'feature/x', label: 'feature/x | upstream' }]);
+  assert.deepEqual(plain(displayRefs([{ kind: 'remote', name: 'origin/release/1.0' }])),
+    [{ kind: 'remote', name: 'origin/release/1.0', label: 'origin/release/1.0' }]);
+  assert.deepEqual(plain(displayRefs([{ kind: 'branch', name: 'local-only' }])),
+    [{ kind: 'branch', name: 'local-only', label: 'local-only' }]);
 });

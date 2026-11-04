@@ -8,8 +8,8 @@ window.__ModuleLoader__.load({
     const ROW_HEIGHT = 32;
     const ID = '@local/dsh-git-graph', NS = 'localGitGraph';
     const dictionaries = {
-      zh: { gitBranch:'分支', branchLoading:'读取分支…', branchUnavailable:'当前目录不是 Git 仓库', branchSwitching:'切换中…', branchFailed:'切换失败', branchOption:'分支', worktreeOption:'Worktree', worktreeDetached:'分离 HEAD', changes:'当前修改', history:'Git 历史', resize:'拖动调整高度', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', commitLabel:'提交', merge:'合并提交', parents:'父提交', messageBody:'提交说明', previewHint:'点击历史项查看文件与差异', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', commitDone:'提交成功', done:'操作完成', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
-      en: { gitBranch:'Branch', branchLoading:'Reading branches…', branchUnavailable:'Not a Git repository', branchSwitching:'Switching…', branchFailed:'Could not switch', branchOption:'Branch', worktreeOption:'Worktree', worktreeDetached:'Detached HEAD', changes:'Changes', history:'Git History', resize:'Drag to resize', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', commitLabel:'Commit', merge:'Merge commit', parents:'Parents', messageBody:'Commit message', previewHint:'Click a history row to view files and diffs', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', commitDone:'Commit created', done:'Operation completed', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
+      zh: { gitBranch:'分支', branchLoading:'读取分支…', branchUnavailable:'当前目录不是 Git 仓库', branchSwitching:'切换中…', branchFailed:'切换失败', branchOption:'分支', worktreeOption:'Worktree', worktreeDetached:'分离 HEAD', changes:'当前修改', history:'Git 历史', resize:'拖动调整高度', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', commitLabel:'提交', merge:'合并提交', parents:'父提交', messageBody:'提交说明', previewHint:'点击历史项查看文件与差异', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
+      en: { gitBranch:'Branch', branchLoading:'Reading branches…', branchUnavailable:'Not a Git repository', branchSwitching:'Switching…', branchFailed:'Could not switch', branchOption:'Branch', worktreeOption:'Worktree', worktreeDetached:'Detached HEAD', changes:'Changes', history:'Git History', resize:'Drag to resize', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', commitLabel:'Commit', merge:'Merge commit', parents:'Parents', messageBody:'Commit message', previewHint:'Click a history row to view files and diffs', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
     };
     // Independent artwork inspired by Git Graph's blue / magenta / green graph motif.
     function GraphIcon({size = 18, className}) {
@@ -128,9 +128,11 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
 .dgg .gg-badge-label{overflow:hidden;text-overflow:ellipsis}
 .dgg .gg-badge[data-kind=remote]{border-style:dashed}
 .dgg .gg-badge[data-kind=head]{font-weight:700;border-color:var(--gg-ref-color);background:color-mix(in srgb,var(--gg-ref-color) 20%,var(--gg-bg))}
-.dgg .gg-badges-compact{max-width:48%;flex:0 1 auto;align-items:center}
-.dgg .gg-badges-compact .gg-badge{max-width:120px;min-width:0;flex:0 1 auto}
-.dgg .gg-ref-more{flex:none;font-size:10px;color:var(--gg-muted)}
+.dgg .gg-badges-compact{max-width:56%;flex:0 1 auto;align-items:center;overflow:hidden}
+.dgg .gg-badges-compact .gg-badge{max-width:180px;min-width:28px;flex:0 1 auto}
+.dgg .gg-meta{display:none;flex:none;align-items:center;gap:12px;font-size:11px;color:var(--gg-muted);white-space:nowrap}
+.dgg .gg-author{max-width:140px;overflow:hidden;text-overflow:ellipsis}
+.dgg .gg-time{font-variant-numeric:tabular-nums}
 .dgg.gg-preview{box-sizing:border-box;position:fixed;z-index:100;display:block;container-type:normal;width:min(440px,calc(100vw - 24px));height:auto;max-height:min(520px,calc(100dvh - 24px));overflow:auto;overscroll-behavior:contain;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1,var(--gg-bg));box-shadow:0 8px 28px color-mix(in srgb,var(--gg-fg) 18%,transparent);font-size:12px;user-select:text}
 .dgg .gg-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--gg-muted);font-size:11px;margin-bottom:6px}
 .dgg .gg-preview-title{font-size:14px;font-weight:600;line-height:1.5;overflow-wrap:anywhere;margin-bottom:10px}
@@ -170,7 +172,12 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
 .dgg .gg-path{overflow-wrap:anywhere}
 .dgg .gg-parent{width:100%;margin:6px 0}
 .dgg .gg-diff summary{cursor:pointer}@container(max-width:360px){.dgg .gg-changes-body{padding:8px}
-.dgg .gg-row{gap:4px!important;padding-right:6px!important}}@media(prefers-reduced-motion:reduce){.dgg *{transition:none!important;animation:none!important}}
+.dgg .gg-row{gap:4px!important;padding-right:6px!important}}@container (min-width:720px){.dgg .gg-meta{display:flex}.dgg .gg-badges-compact{max-width:48%}}@media(prefers-reduced-motion:reduce){.dgg *{transition:none!important;animation:none!important}}
+/* In the main "Git Graph" conversation tab the view owns the whole viewport and its
+   own scrolling; hide the chat composer, floating task dock and the bottom usage meter. */
+[data-conversation-content]:has([data-slot="conversation.view"] .dgg) [data-conversation-region="composer"]{display:none!important}
+[data-conversation-content]:has([data-slot="conversation.view"] .dgg) [data-conversation-scroll]{overflow:hidden!important}
+[data-conversation-content]:has([data-slot="conversation.view"] .dgg) [data-conversation-scroll] > [data-slot="conversation.session"] > div{flex:1 1 0!important;min-height:0!important;overflow:hidden!important}
 `;
     // Colour a commit by its branch, not by lane order: follow each ref's first-parent
     // chain so a branch keeps one colour for its whole line. Refs win over merge-only
@@ -232,11 +239,41 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
         h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:head?5:3.5,fill:'var(--gg-bg)',stroke:laneColor(row.color),strokeWidth:2}),
         head&&h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:2,fill:laneColor(row.color)}));
     }
+    // Fold a same-named local branch and its remote-tracking branch into one label
+    // (for example "main | origin") instead of showing "main" and "origin/main"
+    // separately. Remote-only branches keep their "origin/branch" form.
+    function displayRefs(items) {
+      const branches = items.filter(item => item.kind === 'branch');
+      const remotes = items.filter(item => item.kind === 'remote');
+      const rest = items.filter(item => item.kind !== 'branch' && item.kind !== 'remote');
+      const remotesByBranch = new Map(), usedRemotes = new Set();
+      for (const remote of remotes) {
+        const slash = remote.name.indexOf('/');
+        const remoteName = slash < 0 ? remote.name : remote.name.slice(0, slash);
+        const branchName = slash < 0 ? remote.name : remote.name.slice(slash + 1);
+        if (!remotesByBranch.has(branchName)) remotesByBranch.set(branchName, []);
+        remotesByBranch.get(branchName).push({ remote, remoteName });
+      }
+      const result = [];
+      for (const branch of branches) {
+        const matches = remotesByBranch.get(branch.name) || [];
+        if (!matches.length) { result.push({ kind: branch.kind, name: branch.name, label: branch.name }); continue; }
+        matches.forEach(match => usedRemotes.add(match.remote));
+        const remoteNames = [...new Set(matches.map(match => match.remoteName))];
+        result.push({ kind: branch.kind, name: branch.name, label: branch.name + ' | ' + remoteNames.join(', ') });
+      }
+      for (const remote of remotes) {
+        if (usedRemotes.has(remote)) continue;
+        result.push({ kind: remote.kind, name: remote.name, label: remote.name });
+      }
+      for (const item of rest) result.push({ kind: item.kind, name: item.name, label: item.name });
+      return result;
+    }
     function RefBadges({items,head,color,t,compact=false}) {
-      const all=head?[{kind:'head',name:'HEAD'},...items]:items;
+      const display = displayRefs(items);
+      const all = head ? [{kind:'head',name:'HEAD',label:'HEAD'}, ...display] : display;
       if(!all.length)return null;
-      const visible=compact?all.slice(0,2):all;
-      return h('span',{className:'gg-badges'+(compact?' gg-badges-compact':'')},...visible.map((item,index)=>h('span',{key:item.kind+item.name,className:'gg-badge','data-kind':item.kind,style:{'--gg-ref-color':laneColor(item.kind==='head'?color:index%laneColors.length)},'aria-label':item.kind==='head'?'HEAD':t(item.kind)+': '+item.name},h(Icon,{name:item.kind==='head'?'commit':item.kind==='tag'?'tag':item.kind==='stash'?'stash':item.kind==='remote'?'remote':'branch',size:11}),h('span',{className:'gg-badge-label'},!compact&&item.kind!=='head'?t(item.kind)+': '+item.name:item.name))),compact&&all.length>visible.length&&h('span',{className:'gg-ref-more'},'+'+(all.length-visible.length)));
+      return h('span',{className:'gg-badges'+(compact?' gg-badges-compact':'')},...all.map((item,index)=>h('span',{key:item.kind+item.name,className:'gg-badge','data-kind':item.kind,title:item.label,style:{'--gg-ref-color':laneColor(item.kind==='head'?color:index%laneColors.length)},'aria-label':item.kind==='head'?'HEAD':t(item.kind)+': '+item.label},h(Icon,{name:item.kind==='head'?'commit':item.kind==='tag'?'tag':item.kind==='stash'?'stash':item.kind==='remote'?'remote':'branch',size:11}),h('span',{className:'gg-badge-label'},item.label))));
     }
     function CommitPreview({value,id,items,head,color,t,fullDate,onEnter,onLeave,onClose}) {
       const card=useRef(null),[position,setPosition]=useState(null);
@@ -391,7 +428,7 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
               if(!mounted.current)return false;
               if(onSuccess)onSuccess(result);
               if(request.action==='generate')setNotice(result.truncated?{text:t('draftTruncated')}:null);
-              else {const next=await call({action:'snapshot',ref,limit});if(mounted.current){setData(next);setNotice({text:t(request.action==='commit'?'commitDone':'done')});}}
+              else {const next=await call({action:'snapshot',ref,limit});if(mounted.current)setData(next);}
               return true;
             } catch(error){if(mounted.current)setNotice({error:true,text:error.message});return false;}
             finally {pending.current=false;if(mounted.current)setBusy('');}
@@ -426,7 +463,9 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
           };
           const shortcut=/Mac|iPhone|iPad/.test(navigator.platform)?'Cmd+Enter':'Ctrl+Enter';
           const messagePlaceholder=t(data?.branch?'placeholderBranch':'placeholder').replace('{shortcut}',shortcut).replace('{branch}',data?.branch||'');
-          const fullDate=value=>new Intl.DateTimeFormat(ctx.locale.getLocale().active?.startsWith('zh')?'zh-CN':'en',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(value);
+          const locale=ctx.locale.getLocale().active?.startsWith('zh')?'zh-CN':'en';
+          const fullDate=value=>new Intl.DateTimeFormat(locale,{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(value);
+          const shortDate=value=>new Intl.DateTimeFormat(locale,{year:'2-digit',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(value);
           // Drag the divider between Changes and History to trade height between them.
           const clampSplit=useCallback((next,mainHeight)=>{
             const minChanges=96,minHistory=140,limit=Math.max(minChanges,mainHeight-minHistory);
@@ -483,7 +522,8 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
                     const index=visibleStart+n;
                     return h('button',{type:'button',key:commit.hash,className:'gg-row '+(matches.includes(index)?'gg-match':''),style:{top:index*ROW_HEIGHT},'data-index':index,'aria-pressed':detail?.hash===commit.hash,'aria-label':commit.title+' · '+commit.author+' · '+commit.shortHash,'aria-describedby':preview?.commit.hash===commit.hash?previewId:undefined,onMouseEnter:e=>showPreview(commit,e.currentTarget),onMouseLeave:hidePreview,onFocus:e=>{if(e.currentTarget.matches(':focus-visible'))showPreview(commit,e.currentTarget);},onBlur:hidePreview,onClick:()=>{dismissPreview();openCommit(commit);}},
                       h(Graph,{row:graph.rows[index],width:graph.width,head:data.head===commit.hash}),
-                      h('span',{className:'gg-commit-line'},h(RefBadges,{items:refsAt.get(commit.hash)||[],head:data.head===commit.hash,color:graph.rows[index].color,t,compact:true}),h('span',{className:'gg-subject'},commit.title)));
+                      h('span',{className:'gg-commit-line'},h(RefBadges,{items:refsAt.get(commit.hash)||[],head:data.head===commit.hash,color:graph.rows[index].color,t,compact:true}),h('span',{className:'gg-subject'},commit.title)),
+                      h('span',{className:'gg-meta'},h('span',{className:'gg-author',title:commit.author},commit.author),h('span',{className:'gg-time',title:fullDate(commit.time)},shortDate(commit.time))));
                   })):h('div',{className:'gg-empty'},t('empty'))),
                   (busy==='refresh'||data.hasMore)&&h('div',{className:'gg-footer gg-muted gg-small'},busy==='refresh'?t('loading'):(limit<1000?h(Button,{label:t('more'),disabled:!!busy,onClick:()=>setLimit(Math.min(1000,limit+100))}):t('moreLimit')))))),
             preview&&h(CommitPreview,{key:preview.commit.hash,value:preview,id:previewId,items:refsAt.get(preview.commit.hash)||[],head:data.head===preview.commit.hash,color:graph.rows[commits.findIndex(commit=>commit.hash===preview.commit.hash)]?.color||0,t,fullDate,onEnter:keepPreview,onLeave:hidePreview,onClose:dismissPreview}),
