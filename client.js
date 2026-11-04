@@ -87,7 +87,7 @@ window.__ModuleLoader__.load({
 .dgg .gg-status[data-status=D],.dgg .gg-status.gg-conflict{color:var(--gg-deleted)}
 .dgg .gg-status[data-status=C]{color:var(--gg-accent)}
 .dgg .gg-empty{padding:24px 16px;text-align:center;color:var(--gg-muted)}
-.dgg .gg-history{flex:1 0 auto;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+.dgg .gg-history{flex:1 1 0%;min-height:0;display:flex;flex-direction:column;overflow:hidden}
 .dgg .gg-history.gg-folded{flex:none}
 .dgg .gg-filters{display:flex;flex-wrap:nowrap;align-items:center;gap:6px;padding:8px 12px;flex:none;min-width:0}
 .dgg .gg-filters select,.dgg .gg-search input,.dgg .gg-search button{height:32px;min-height:32px;padding:0 8px;font-size:13px;line-height:1.5;border-radius:6px}
@@ -95,7 +95,7 @@ window.__ModuleLoader__.load({
 .dgg .gg-search{display:flex;flex:1;gap:4px;min-width:0;align-items:center}
 .dgg .gg-search input{flex:1;min-width:0}
 .dgg .gg-search button{flex:none;width:32px;padding:0}
-.dgg .gg-scroll{overflow:auto;flex:1;height:64px;min-height:64px;position:relative;overscroll-behavior:contain}
+.dgg .gg-scroll{overflow:auto;flex:1 1 0%;min-height:64px;position:relative;overscroll-behavior:contain}
 .dgg .gg-row{position:absolute;left:0;right:0;height:64px;display:flex;align-items:stretch;border-radius:0!important;border-bottom:1px solid var(--gg-line)!important;padding:0 12px 0 6px!important;justify-content:flex-start!important;text-align:left;width:100%;gap:8px!important}
 .dgg .gg-row.gg-match{background:var(--gg-match)}
 .dgg .gg-row:hover{background:var(--gg-hover)}
@@ -145,22 +145,43 @@ window.__ModuleLoader__.load({
 .dgg .gg-changes-body{padding:8px}
 .dgg .gg-row{gap:4px!important;padding-right:6px!important}}@media(prefers-reduced-motion:reduce){.dgg *{transition:none!important;animation:none!important}}
 `;
+    // Colour a commit by its branch, not by lane order: follow each ref's first-parent
+    // chain so a branch keeps one colour for its whole line. Refs win over merge-only
+    // branches; anything still uncoloured gets its own colour in topological order.
+    function commitColors(commits, refs, branch) {
+      const byHash = new Map(commits.map(commit => [commit.hash, commit])), color = new Map();
+      let serial = 0;
+      const paint = start => {
+        if (!start || !byHash.has(start) || color.has(start)) return;
+        const index = serial++ % laneColors.length;
+        for (let hash = start; hash && byHash.has(hash) && !color.has(hash); hash = byHash.get(hash).parents[0]) color.set(hash, index);
+      };
+      const kindRank = ref => ref.kind === 'branch' ? 0 : ref.kind === 'remote' ? 1 : 2;
+      const headRef = refs.find(ref => ref.kind === 'branch' && ref.name === branch);
+      const ordered = [...refs].sort((a,b) => a === headRef ? -1 : b === headRef ? 1 : (kindRank(a) - kindRank(b)) || a.name.localeCompare(b.name));
+      ordered.forEach(ref => paint(ref.hash));
+      commits.forEach(commit => { for (let i = 1; i < commit.parents.length; i++) paint(commit.parents[i]); });
+      commits.forEach(commit => paint(commit.hash));
+      return color;
+    }
     // Each row records incoming lanes, the commit point, and outgoing parent edges.
-    function layoutGraph(commits) {
-      let lanes = [], serial = 0, width = 1;
+    function layoutGraph(commits, refs = [], branch) {
+      const colorOf = commitColors(commits, refs, branch);
+      let lanes = [], width = 1;
       const rows = commits.map(commit => {
         let column = lanes.findIndex(l => l.hash === commit.hash);
         const incoming = lanes.map(l => ({...l}));
-        if (column < 0) { column = lanes.length; lanes.push({hash:commit.hash,color:serial++ % laneColors.length}); }
-        const color = lanes[column].color;
+        if (column < 0) { column = lanes.length; lanes.push({hash:commit.hash}); }
+        const color = colorOf.get(commit.hash) || 0;
         const next = lanes.filter(l => l.hash !== commit.hash);
-        commit.parents.forEach((hash,index) => { if (!next.some(l => l.hash === hash)) next.splice(index === 0 ? Math.min(column,next.length) : next.length, 0, {hash,color:index === 0 ? color : serial++ % laneColors.length}); });
+        commit.parents.forEach((hash,index) => { if (!next.some(l => l.hash === hash)) next.splice(index === 0 ? Math.min(column,next.length) : next.length, 0, {hash}); });
         const edges = [];
         incoming.forEach((lane,index) => {
-          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:32,color:lane.color});
-          else { const target=next.findIndex(l=>l.hash===lane.hash); if(target>=0) edges.push({x1:index,y1:0,x2:target,y2:64,color:lane.color}); }
+          const laneColor = colorOf.get(lane.hash) || 0;
+          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:32,color:laneColor});
+          else { const target=next.findIndex(l=>l.hash===lane.hash); if(target>=0) edges.push({x1:index,y1:0,x2:target,y2:64,color:laneColor}); }
         });
-        commit.parents.forEach(hash=>{const target=next.findIndex(l=>l.hash===hash);edges.push({x1:column,y1:32,x2:target,y2:64,color:next[target].color});});
+        commit.parents.forEach((hash,index)=>{const target=next.findIndex(l=>l.hash===hash);edges.push({x1:column,y1:32,x2:target,y2:64,color:index === 0 ? color : (colorOf.get(hash) || 0)});});
         width=Math.max(width,incoming.length,next.length,column+1); lanes=next;
         return {column,color,edges};
       });
@@ -245,7 +266,7 @@ window.__ModuleLoader__.load({
             if(detail?.hash)viewport.current?.querySelector('[aria-pressed="true"]')?.scrollIntoView({block:'nearest'});
           },[detail?.hash,detail?.loading]);
           const closeDetail=()=>{detailGeneration.current++;setDetail(null);setDiff(null);};
-          const commits=data?.commits||[], graph=useMemo(()=>layoutGraph(commits),[commits]);
+          const commits=data?.commits||[], graph=useMemo(()=>layoutGraph(commits,data?.refs||[],data?.branch),[commits,data]);
           const matches=useMemo(()=>query ? commits.map((c,i)=>[c,i]).filter(([c])=>(c.title+' '+c.author+' '+c.hash).toLowerCase().includes(query.toLowerCase())).map(([,i])=>i):[],[commits,query]);
           const refsAt=useMemo(()=>{const map=new Map();for(const item of [...(data?.refs||[]),...(data?.stashes||[]).map(s=>({...s,kind:'stash'}))])map.set(item.hash,[...(map.get(item.hash)||[]),item]);return map;},[data]);
           const staged=data?.files?.filter(f=>f.staged)||[],working=data?.files?.filter(f=>f.unstaged)||[];
