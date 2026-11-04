@@ -5,7 +5,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
-import { GitGraphService } from '../git.js';
+import { GitGraphService, parseWorktrees } from '../git.js';
 
 const testDirectory = path.dirname(fileURLToPath(import.meta.url));
 const gitEnvironment = Object.fromEntries(Object.entries(process.env).filter(([key]) => !key.startsWith('GIT_')));
@@ -40,7 +40,7 @@ function run(cwd, args, options = {}) {
   });
 }
 
-async function repository(t, generate = async () => { throw new Error('Unexpected generation request'); }) {
+async function repository(t, generate = async () => { throw new Error('Unexpected generation request'); }, switchWorktree) {
   await mkdir(testDirectory, { recursive: true });
   const parent = await realpath(testDirectory);
   const root = await mkdtemp(path.join(parent, '.git-graph-test-'));
@@ -66,7 +66,7 @@ async function repository(t, generate = async () => { throw new Error('Unexpecte
   await git(['config', 'tag.gpgsign', 'false']);
   await git(['config', 'core.autocrlf', 'false']);
   await git(['config', 'core.hooksPath', path.join(ownedRoot, 'empty-hooks')]);
-  const service = new GitGraphService(run, generate);
+  const service = new GitGraphService(run, generate, switchWorktree);
   const execute = request => service.execute(cwd, request);
   const put = async (name, text) => {
     const target = path.join(cwd, name);
@@ -565,6 +565,48 @@ test('unsafe repository paths, revisions, parent hashes and ref names are reject
   assert.equal((await git(['status', '--porcelain=v1', '-z'])).stdout, status);
   assert.equal((await git(['show-ref'])).stdout, refs);
   assert.equal((await git(['rev-parse', 'HEAD'])).stdout.trim(), hash);
+});
+
+test('workspace lists the current branch and registered worktrees', async t => {
+  const { execute, put, commit, git, cwd } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  await commit();
+  const linked = path.join(path.dirname(cwd), 'linked worktree');
+  await git(['branch', 'feature']);
+  await git(['worktree', 'add', linked, 'feature']);
+
+  const result = await execute({ action: 'workspace' });
+  assert.equal(result.repository, cwd);
+  assert.equal(result.branch, 'main');
+  assert.ok(result.branches.includes('main'));
+  assert.ok(result.branches.includes('feature'));
+  assert.equal(result.worktrees.length, 2);
+  assert.ok(result.worktrees.some(item => item.path === cwd && item.current && item.branch === 'main'));
+  assert.ok(result.worktrees.some(item => item.path === linked && !item.current && item.branch === 'feature'));
+});
+
+test('worktree records parse NUL-delimited paths including spaces and detached heads', () => {
+  const records = parseWorktrees('worktree /repo main\0HEAD abc123\0branch refs/heads/main\0\0worktree /repo linked\0HEAD def456\0detached\0\0');
+  assert.deepEqual(records, [
+    { path: '/repo main', head: 'abc123', branch: 'main' },
+    { path: '/repo linked', head: 'def456', detached: true },
+  ]);
+});
+
+test('switchWorktree only changes this session to a registered worktree', async t => {
+  let switched;
+  const { execute, put, commit, git, cwd } = await repository(t, undefined, async directory => { switched = directory; });
+  await put('tracked.txt', 'base\n');
+  await commit();
+  const linked = path.join(path.dirname(cwd), 'linked');
+  await git(['branch', 'feature']);
+  await git(['worktree', 'add', linked, 'feature']);
+
+  const result = await execute({ action: 'switchWorktree', worktreePath: linked });
+  assert.equal(result.repository, linked);
+  assert.equal(switched, linked);
+  await assert.rejects(execute({ action: 'switchWorktree', worktreePath: path.dirname(cwd) }), /existing worktree/);
+  assert.equal(switched, linked, 'Invalid paths never change the session directory');
 });
 
 test('stage and unstage treat Git pathspec syntax and option-looking filenames literally', async t => {

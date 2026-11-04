@@ -25,9 +25,23 @@ export function parseLog(text) {
   return commits;
 }
 
+export function parseWorktrees(text) {
+  return text.split('\0\0').filter(Boolean).map(record => {
+    const entry = {};
+    for (const field of record.split('\0')) {
+      const space = field.indexOf(' '), key = space < 0 ? field : field.slice(0, space), value = space < 0 ? '' : field.slice(space + 1);
+      if (key === 'worktree') entry.path = value;
+      else if (key === 'HEAD') entry.head = value;
+      else if (key === 'branch') entry.branch = value.replace(/^refs\/heads\//, '');
+      else if (['bare', 'detached', 'locked', 'prunable'].includes(key)) entry[key] = value || true;
+    }
+    return entry;
+  }).filter(entry => entry.path);
+}
+
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b';
-const WRITE = new Set(['stage', 'unstage', 'commit', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
-const ACTIONS = new Set(['snapshot', 'detail', 'diff', 'generate', ...WRITE]);
+const WRITE = new Set(['stage', 'unstage', 'commit', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
+const ACTIONS = new Set(['snapshot', 'workspace', 'detail', 'diff', 'generate', ...WRITE]);
 const hashValue = v => { if (!/^[a-f0-9]{40,64}$/.test(v || '')) throw new Error('A full commit hash is required'); return v; };
 const fileValue = v => {
   if (typeof v !== 'string' || !v || v.includes('\0') || path.isAbsolute(v) || v.split(/[\\/]/).includes('..')) throw new Error('Invalid repository-relative path');
@@ -35,14 +49,14 @@ const fileValue = v => {
 };
 
 export class GitGraphService {
-  constructor(run, generate) { this.run = run; this.generate = generate; this.locks = new Set(); }
+  constructor(run, generate, switchWorktree) { this.run = run; this.generate = generate; this.switchWorktree = switchWorktree; this.locks = new Set(); }
   async execute(cwd, request, signal) {
     if (!request || !ACTIONS.has(request.action)) throw new Error('Unknown Git Graph action');
     const { action } = request;
     const git = (args, options) => this.run(cwd, args, { signal, ...options });
     const rootResult = await git(['rev-parse', '--show-toplevel'], { allowFailure: true });
     if (rootResult.code !== 0) {
-      if (action === 'snapshot' && /not a git repository/i.test(rootResult.stderr)) return { repository: null, cwd };
+      if (['snapshot', 'workspace'].includes(action) && /not a git repository/i.test(rootResult.stderr)) return { repository: null, cwd };
       throw new Error(rootResult.stderr || 'Cannot open Git repository');
     }
     const root = rootResult.stdout.trim();
@@ -51,6 +65,19 @@ export class GitGraphService {
     if (isWrite && this.locks.has(root)) throw new Error('Another Git operation is running. Refresh and try again.');
     if (isWrite) this.locks.add(root);
     try {
+      if (action === 'workspace') {
+        const [head, hash, refs, trees] = await Promise.all([
+          g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true }),
+          g(['rev-parse', '--verify', 'HEAD'], { allowFailure: true }),
+          g(['for-each-ref', '--format=%(refname)%00', 'refs/heads']),
+          g(['worktree', 'list', '--porcelain', '-z'])
+        ]);
+        const branch = head.stdout.trim() || null;
+        const branches = refs.stdout.split('\0').map(ref => ref.trim().replace(/^refs\/heads\//, '')).filter(Boolean);
+        if (branch && !branches.includes(branch)) branches.unshift(branch);
+        return { repository: root, branch, head: hash.code === 0 ? hash.stdout.trim() : null, branches,
+          worktrees: parseWorktrees(trees.stdout).map(tree => ({ ...tree, current: tree.path === root })) };
+      }
       if (action === 'snapshot') {
         const limit = Math.max(50, Math.min(1000, Number(request.limit) || 100));
         const [status, head, refsResult, stashResult] = await Promise.all([
@@ -187,6 +214,16 @@ export class GitGraphService {
         }
         truncated ||= summaryText.length > 60000;
         return { message: await this.generate({ source, diff: text, summary: summaryText.slice(0, 60000), locale: request.locale, signal }), truncated };
+      }
+      if (action === 'switchWorktree') {
+        const trees = parseWorktrees((await g(['worktree', 'list', '--porcelain', '-z'])).stdout);
+        const target = trees.find(tree => tree.path === request.worktreePath && !tree.bare && !tree.prunable);
+        if (!target) throw new Error('Choose an existing worktree of this repository');
+        const actual = await this.run(target.path, ['rev-parse', '--show-toplevel'], { signal });
+        if (actual.stdout.replace(/\r?\n$/, '') !== target.path) throw new Error('Worktree is no longer available; refresh');
+        if (!this.switchWorktree) throw new Error('Session worktree switching is unavailable');
+        await this.switchWorktree(target.path, signal);
+        return { ok: true, repository: target.path };
       }
       if (action === 'checkout') {
         if (request.branch) {

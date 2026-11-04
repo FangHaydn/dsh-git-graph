@@ -1,6 +1,6 @@
 # DSH Git Graph
 
-DSH 右侧栏的 Git 工作区和历史插件。打开右侧栏，点击「+」进入工具列表，再选择 **Git Graph**。
+DSH 的 Git 工作区和历史插件。打开右侧栏，点击「+」进入工具列表，再选择 **Git Graph**；标签显示 Git Graph 的彩色分支图标。新会话输入框上方显示当前 Git 分支，可切换本地分支或选择已登记的 worktree；切换 worktree 会持久更改当前会话目录，不会新建或删除 worktree。安装 better-sidebar 后，也可在底部工作区 panel 的空白面板入口或「+」菜单中选择 **Git Graph**，在工作区内查看同一套 Git 界面。
 
 - **当前修改**：工作区与暂存区列表，逐个或批量暂存／取消暂存；点击文件查看差异；提交输入框右侧提供 AI Conventional Commits 草稿生成；有暂存修改时仅提交暂存内容，暂存区为空时自动暂存全部改动（含未跟踪文件）后提交；支持 ⌘/Ctrl + Enter 提交。
 - **Git 历史**：每条记录以 32px 单行展示引用标签与提交标题，超长内容省略；引用较多时显示数量提示。鼠标悬停或键盘聚焦可查看详情浮层，完整展示标题、全部引用、作者邮箱、含时区的提交时间、完整 Hash、父提交与提交正文；浮层可移入阅读和选择文本，支持 Escape 关闭，并自动避让窗口边缘。分支线按所属分支贯穿使用同一颜色，节点与其连线颜色一致；支持分支筛选、搜索定位、分页和虚拟列表。
@@ -29,7 +29,7 @@ Git 调用通过 DSH subprocess / sandbox 服务执行，遵守当前会话的�
 {"action":"generate","locale":"zh"}
 ```
 
-写操作包括 stage、unstage、commit、checkout、branch、tag、stashSave、stashApply、stashDrop。工具描述要求在用户明确请求后才提交或删除 Stash。stashDrop 接受完整 Stash Hash，执行时解析当前储藏序号；目标已不存在时返回错误。界面的切换和 Stash 操作显示确认说明。没有实现 push/pull、rebase、cherry-pick、reset、丢弃修改或删除分支／标签。
+写操作包括 stage、unstage、commit、checkout、switchWorktree、branch、tag、stashSave、stashApply、stashDrop。switchWorktree 只接受当前仓库已登记的 worktree 路径，并将当前会话工作目录持久切换到该 worktree，不会创建或关联新的 DSH worktree 记录。工具描述要求在用户明确请求后才提交或删除 Stash。stashDrop 接受完整 Stash Hash，执行时解析当前储藏序号；目标已不存在时返回错误。界面的切换和 Stash 操作显示确认说明。没有实现 push/pull、rebase、cherry-pick、reset、丢弃修改或删除分支／标签。
 
 本项目是独立实现，功能参考 VS Code Git Graph 的历史浏览方式；未复制该项目的源代码或图标。
 

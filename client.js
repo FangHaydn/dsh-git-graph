@@ -2,13 +2,14 @@ window.__ModuleLoader__.load({
   id: '@local/dsh-git-graph',
   factory(require) {
     const React = require('react'), h = React.createElement;
+    const { Menu } = require('@deepseek-ai/dsh-client-ui-primitives');
     const { createPortal } = require('react-dom');
     const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } = React;
     const ROW_HEIGHT = 32;
     const ID = '@local/dsh-git-graph', NS = 'localGitGraph';
     const dictionaries = {
-      zh: { changes:'当前修改', history:'Git 历史', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', commitLabel:'提交', merge:'合并提交', parents:'父提交', messageBody:'提交说明', previewHint:'点击历史项查看文件与差异', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', commitDone:'提交成功', done:'操作完成', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
-      en: { changes:'Changes', history:'Git History', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', commitLabel:'Commit', merge:'Merge commit', parents:'Parents', messageBody:'Commit message', previewHint:'Click a history row to view files and diffs', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', commitDone:'Commit created', done:'Operation completed', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
+      zh: { gitBranch:'分支', branchLoading:'读取分支…', branchUnavailable:'当前目录不是 Git 仓库', branchSwitching:'切换中…', branchFailed:'切换失败', branchOption:'分支', worktreeOption:'Worktree', worktreeDetached:'分离 HEAD', changes:'当前修改', history:'Git 历史', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', commitLabel:'提交', merge:'合并提交', parents:'父提交', messageBody:'提交说明', previewHint:'点击历史项查看文件与差异', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', commitDone:'提交成功', done:'操作完成', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
+      en: { gitBranch:'Branch', branchLoading:'Reading branches…', branchUnavailable:'Not a Git repository', branchSwitching:'Switching…', branchFailed:'Could not switch', branchOption:'Branch', worktreeOption:'Worktree', worktreeDetached:'Detached HEAD', changes:'Changes', history:'Git History', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', commitLabel:'Commit', merge:'Merge commit', parents:'Parents', messageBody:'Commit message', previewHint:'Click a history row to view files and diffs', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', commitDone:'Commit created', done:'Operation completed', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
     };
     // Independent artwork inspired by Git Graph's blue / magenta / green graph motif.
     function GraphIcon({size = 18, className}) {
@@ -42,6 +43,14 @@ window.__ModuleLoader__.load({
     // Git Graph's twelve-colour sequence, blended with the theme foreground for contrast.
     const laneColors = ['#0085d9','#d9008f','#00d90a','#d98500','#a300d9','#ff0000','#00d9cc','#e138e8','#85d900','#dc5b23','#6f24d6','#ffcc00'];
     const laneColor = index => `var(--gg-lane-${index})`;
+    const branchCss = `
+div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-left:0}
+.gg-branch-button{display:inline-flex;align-items:center;gap:4px;min-height:28px;min-width:0;max-width:min(240px,36vw);padding:0 8px;border:0;border-radius:var(--dsw-radius-sm);background:transparent;color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;font-weight:500;line-height:20px;white-space:nowrap;cursor:pointer}
+.gg-branch-button:not(:disabled):hover,.gg-branch-button[aria-expanded=true]{background:var(--dsw-alias-interactive-bg-hover)}
+.gg-branch-button:disabled{cursor:default;color:var(--dsw-alias-label-quaternary)}
+.gg-branch-button:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:2px}
+.gg-branch-button .gg-icon{flex:none}
+`;
     const css = `
 .dgg{--gg-bg:var(--dsw-alias-bg-base);--gg-fg:var(--dsw-alias-label-primary);--gg-muted:var(--dsw-alias-label-secondary);--gg-line:var(--dsw-alias-border-l1);--gg-accent:var(--gg-lane-0);--gg-button:#0075bf;--gg-button-fg:#fff;--gg-hover:color-mix(in srgb,var(--gg-fg) 6%,var(--gg-bg));--gg-selected:color-mix(in srgb,var(--gg-accent) 14%,var(--gg-bg));--gg-match:color-mix(in srgb,var(--gg-lane-3) 12%,var(--gg-bg));--gg-added:var(--dsw-alias-state-success-primary);--gg-deleted:var(--dsw-alias-state-error-primary);--gg-modified:var(--dsw-alias-state-warn-primary);${laneColors.map((color,i)=>`--gg-lane-${i}:color-mix(in srgb,${color} ${[2,6,8,11].includes(i)?68:82}%,var(--gg-fg));`).join('')}display:flex;flex-direction:column;height:100%;min-height:0;min-width:0;color:var(--gg-fg);background:var(--gg-bg);font-family:inherit;font-size:13px;line-height:1.5;overflow:hidden;container-type:inline-size}
 .dgg *{box-sizing:border-box}
@@ -176,32 +185,43 @@ window.__ModuleLoader__.load({
       commits.forEach(commit => paint(commit.hash));
       return color;
     }
-    // Each row records incoming lanes, the commit point, and outgoing parent edges.
+    // Lanes own their colour until they reach their target commit. Different branches
+    // can target the same ancestor without joining early or moving past other nodes.
     function layoutGraph(commits, refs = [], branch) {
       const colorOf = commitColors(commits, refs, branch);
       let lanes = [], width = 1;
       const rows = commits.map(commit => {
-        let column = lanes.findIndex(l => l.hash === commit.hash);
-        const incoming = lanes.map(l => ({...l}));
-        if (column < 0) { column = lanes.length; lanes.push({hash:commit.hash}); }
         const color = colorOf.get(commit.hash) || 0;
-        const next = lanes.filter(l => l.hash !== commit.hash);
-        commit.parents.forEach((hash,index) => { if (!next.some(l => l.hash === hash)) next.splice(index === 0 ? Math.min(column,next.length) : next.length, 0, {hash}); });
+        let column = lanes.findIndex(l => l?.hash === commit.hash && l.color === color);
+        if (column < 0) column = lanes.findIndex(l => l?.hash === commit.hash);
+        if (column < 0) { column = lanes.indexOf(null); if (column < 0) column = lanes.length; }
+        const incoming = lanes;
+        const next = lanes.map(l => l?.hash === commit.hash ? null : l);
         const edges = [];
         incoming.forEach((lane,index) => {
-          const laneColor = colorOf.get(lane.hash) || 0;
-          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:ROW_HEIGHT/2,color:laneColor});
-          else { const target=next.findIndex(l=>l.hash===lane.hash); if(target>=0) edges.push({x1:index,y1:0,x2:target,y2:ROW_HEIGHT,color:laneColor}); }
+          if (!lane) return;
+          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:ROW_HEIGHT/2,color:lane.color});
+          else edges.push({x1:index,y1:0,x2:index,y2:ROW_HEIGHT,color:lane.color});
         });
-        commit.parents.forEach((hash,index)=>{const target=next.findIndex(l=>l.hash===hash);edges.push({x1:column,y1:ROW_HEIGHT/2,x2:target,y2:ROW_HEIGHT,color:index === 0 ? color : (colorOf.get(hash) || 0)});});
+        commit.parents.forEach((hash,index) => {
+          const parentColor = index === 0 ? color : (colorOf.get(hash) || 0);
+          let target = next.findIndex(l => l?.hash === hash && l.color === parentColor);
+          if (target < 0) {
+            target = index === 0 ? column : next.findIndex((l,i) => !l && i > column);
+            if (target < 0) target = next.length;
+            next[target] = {hash,color:parentColor};
+          }
+          edges.push({x1:column,y1:ROW_HEIGHT/2,x2:target,y2:ROW_HEIGHT,color:parentColor});
+        });
+        while (next.length && !next[next.length-1]) next.pop();
         width=Math.max(width,incoming.length,next.length,column+1); lanes=next;
         return {column,color,edges};
       });
       return {rows,width};
     }
     function Graph({row,width,head}) {
-      const x = n => 9+n*14;
-      return h('svg',{className:'gg-graph',width:width*14+4,height:ROW_HEIGHT,viewBox:`0 0 ${width*14+4} ${ROW_HEIGHT}`,'aria-hidden':true},
+      const spacing = 20, x = n => 9+n*spacing;
+      return h('svg',{className:'gg-graph',width:width*spacing+4,height:ROW_HEIGHT,viewBox:`0 0 ${width*spacing+4} ${ROW_HEIGHT}`,'aria-hidden':true},
         ...row.edges.map((edge,i)=>h('path',{key:i,d:`M${x(edge.x1)} ${edge.y1} C${x(edge.x1)} ${(edge.y1+edge.y2)/2} ${x(edge.x2)} ${(edge.y1+edge.y2)/2} ${x(edge.x2)} ${edge.y2}`,fill:'none',stroke:laneColor(edge.color),strokeWidth:2})),
         h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:head?5:3.5,fill:'var(--gg-bg)',stroke:laneColor(row.color),strokeWidth:2}),
         head&&h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:2,fill:laneColor(row.color)}));
@@ -249,8 +269,55 @@ window.__ModuleLoader__.load({
         function useT() { useSyncExternalStore(fn=>ctx.locale.subscribe(fn),()=>ctx.locale.getSnapshot()); return translate; }
         function Button({label,children,...props}) { return h('button',{type:'button',title:label,'aria-label':label,...props},children||label); }
         function Diff({value,t}) { return value ? h(React.Fragment,null,value.truncated&&h('p',{className:'gg-muted gg-small'},t('truncated')),h('pre',{className:'gg-diff',tabIndex:0},value.text ? value.text.split('\n').map((line,i)=>h('span',{key:i,className:'gg-diff-line '+(line.startsWith('+')?'gg-added':line.startsWith('-')?'gg-deleted':line.startsWith('@@')?'gg-hunk':'')},line||' ')) : t('noDiff'))) : null; }
-        function Panel({sessionId,executeCommand,useTabInfo}) {
-          const t=useT(), {tab}=useTabInfo();
+        function NativePanel({useTabInfo,...props}) {
+          return h(Panel,{...props,tab:useTabInfo().tab});
+        }
+        function BranchSelector({sessionId,useSession}) {
+          const t=useT(),cwd=useSession(session=>session.cwd),[workspace,setWorkspace]=useState(null),[busy,setBusy]=useState(false),[loading,setLoading]=useState(true),[error,setError]=useState(''),[open,setOpen]=useState(false);
+          const executeCommand=useCallback((request,signal)=>ctx.remote.commands.execute(sessionId,'/local-git-graph '+JSON.stringify(request),[],signal),[sessionId]);
+          const runRequest=useCallback(async(request,signal)=>{
+            const rpc=await executeCommand(request,signal);
+            if(!rpc.ok)throw new Error(rpc.error?.message||t('error'));
+            const result=rpc.value?.result;
+            if(!result)throw new Error('Git Graph command is unavailable');
+            if(result.kind==='error')throw new Error(result.text);
+            return JSON.parse(result.text);
+          },[executeCommand,t]);
+          const readWorkspace=useCallback(signal=>runRequest({action:'workspace'},signal),[runRequest]);
+          const refresh=useCallback(async signal=>{
+            setLoading(true);
+            try {const value=await readWorkspace(signal);setWorkspace(value);setError('');}
+            catch(cause){if(!signal?.aborted)setError(cause.message);}
+            finally {if(!signal?.aborted)setLoading(false);}
+          },[readWorkspace]);
+          useEffect(()=>{const controller=new AbortController();refresh(controller.signal);return()=>controller.abort();},[refresh,cwd]);
+          const select=async id=>{
+            setOpen(false);setError('');
+            if(!id||id===`branch:${workspace?.branch}`)return;
+            const [kind,...value]=id.split(':');
+            const request=kind==='branch'?{action:'checkout',branch:value.join(':')}:{action:'switchWorktree',worktreePath:value.join(':')};
+            const controller=new AbortController();setBusy(true);
+            try {await runRequest(request,controller.signal);await refresh(controller.signal);}
+            catch(cause){setError(cause.message);}
+            finally {setBusy(false);}
+          };
+          if(!workspace?.repository)return loading||error?h('div',{className:'gg-branch-selector'},h('style',null,branchCss),loading?h('button',{type:'button',className:'gg-branch-button',disabled:true,'aria-label':t('branchLoading')},h(Icon,{name:'branch',size:16}),t('branchLoading')):h('button',{type:'button',className:'gg-branch-button','aria-label':t('branchFailed'),title:error,onClick:()=>refresh(),style:{color:'var(--dsw-alias-state-error-primary)'}},h(Icon,{name:'reload',size:16}))):null;
+          const selected=workspace.branch?`branch:${workspace.branch}`:`worktree:${workspace.worktrees.find(item=>item.current)?.path||workspace.repository}`;
+          const items=[...workspace.branches.map(branch=>({id:`branch:${branch}`,label:`${t('branchOption')}: ${branch}`})),...workspace.worktrees.map(item=>({id:`worktree:${item.path}`,label:`${t('worktreeOption')}: ${item.branch||t('worktreeDetached')} · ${item.path.split(/[\\/]/).pop()}`}))];
+          return h('div',{className:'gg-branch-selector',style:{display:'flex',alignItems:'center',gap:6,minWidth:0}},h('style',null,branchCss),h(Menu,{open,onClose:()=>setOpen(false),items,selectedId:selected,onSelect:select,align:'start',portal:true,
+            anchor:h('button',{type:'button',className:'gg-branch-button',title:workspace.repository,'aria-label':t('gitBranch')+': '+(workspace.branch||t('worktreeDetached')),'aria-haspopup':'menu','aria-expanded':open,disabled:busy,onClick:()=>{setError('');setOpen(value=>!value);}},h(Icon,{name:'branch',size:16}),h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},busy?t('branchSwitching'):workspace.branch||t('worktreeDetached')),h(Icon,{name:'chevronDown',size:14}))}),
+            error&&h('span',{role:'alert',title:error,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--dsw-alias-state-error-primary)',fontSize:12}},t('branchFailed')));
+        }
+        function WorkspacePanel({scope,visible}) {
+          const executeCommand=useCallback((line,signal)=>ctx.remote.commands.execute(scope.sessionId,line,[],signal),[scope.sessionId]);
+          const tab=useMemo(()=>({visible}),[visible]);
+          return h(Panel,{key:scope.sessionId,sessionId:scope.sessionId,executeCommand,tab});
+        }
+        function TabTitle({useTabInfo}) {
+          return h(React.Fragment,null,h(GraphIcon,{size:16}),useTabInfo().tab.title);
+        }
+        function Panel({sessionId,executeCommand,tab}) {
+          const t=useT();
           const [data,setData]=useState(null),[busy,setBusy]=useState(''),[notice,setNotice]=useState(null);
           const [foldChanges,setFoldChanges]=useState(false),[foldHistory,setFoldHistory]=useState(false);
           const [message,setMessage]=useState(''),[ref,setRef]=useState(''),[limit,setLimit]=useState(100),[query,setQuery]=useState('');
@@ -263,10 +330,11 @@ window.__ModuleLoader__.load({
           const showPreview=(commit,anchor)=>{clearTimeout(previewTimer.current);previewTimer.current=setTimeout(()=>{const rect=anchor.getBoundingClientRect(),bounds=anchor.closest('.gg-scroll')?.getBoundingClientRect();if(commit&&anchor.isConnected&&(!bounds||rect.bottom>bounds.top&&rect.top<bounds.bottom))setPreview({commit,anchor});},260);};
           useEffect(()=>()=>clearTimeout(previewTimer.current),[]);
           useEffect(()=>{dismissPreview();},[data,foldHistory,tab.visible,dismissPreview]);
-          const viewport=useRef(null), generation=useRef(0), detailGeneration=useRef(0), pending=useRef(false), mounted=useRef(true);
-          useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;detailGeneration.current++;};},[]);
+          const viewport=useRef(null), generation=useRef(0), detailGeneration=useRef(0), pending=useRef(false), mounted=useRef(true), lifetime=useRef(null);
+          useEffect(()=>{const controller=new AbortController();lifetime.current=controller;mounted.current=true;return()=>{controller.abort();mounted.current=false;generation.current++;detailGeneration.current++;};},[]);
           const call=useCallback(async request=>{
-            const rpc=await executeCommand('/local-git-graph '+JSON.stringify(request),tab.signal);
+            const signal=tab.signal?AbortSignal.any([tab.signal,lifetime.current.signal]):lifetime.current.signal;
+            const rpc=await executeCommand('/local-git-graph '+JSON.stringify(request),signal);
             if(!rpc.ok) throw new Error(rpc.error?.message||t('error'));
             const result=rpc.value?.result;
             if(!result) throw new Error('Git Graph command is unavailable');
@@ -293,7 +361,7 @@ window.__ModuleLoader__.load({
             finally {if(mounted.current&&id===generation.current)setBusy('');}
           },[call,ref,limit]);
           useEffect(()=>{if(tab.visible)refresh();},[refresh,tab.visible]);
-          useEffect(()=>tab.actions.bindCommands({refresh}),[tab.actions,refresh]);
+          useEffect(()=>tab.actions?.bindCommands({refresh}),[tab.actions,refresh]);
           useEffect(()=>{
             if(!tab.visible)return;
             const focus=()=>refresh();window.addEventListener('focus',focus);
@@ -378,7 +446,13 @@ window.__ModuleLoader__.load({
                 diff&&(diff.loading?h('div',{className:'gg-loading'},t('loading')):diff.error?h('div',{role:'alert'},diff.error):h(React.Fragment,null,h('div',{className:'gg-path gg-small'},diff.path),h(Diff,{value:diff,t}))))));
         }
         ctx.effect(()=>ctx.sidebarRightTabs.register({id:ID,kind:'local-git-graph',title:()=> 'Git Graph',keepMounted:true,guide:[{id:'main',order:35,title:()=> 'Git Graph',description:()=>translate('supported'),icon:GraphIcon}]}));
-        ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:ID,inject:sessionId=>({executeCommand:(line,signal)=>ctx.remote.commands.execute(sessionId,line,[],signal)})},Panel));
+        ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:ID,inject:sessionId=>({executeCommand:(line,signal)=>ctx.remote.commands.execute(sessionId,line,[],signal)})},NativePanel));
+        ctx.slots.inject('sidebar.right.pane.tab.title',()=>ctx.slots.register({name:'sidebar.right.pane.tab.title',key:ID},TabTitle));
+        ctx.slots.inject('conversation.hero.options',()=>ctx.slots.register({name:'conversation.hero.options',id:ID,order:35,inject:sessionId=>({sessionId})},BranchSelector));
+        ctx.inject(['betterSidebar'],injected=>injected.betterSidebar.registerTab({
+          id:ID,title:()=> 'Git Graph',description:()=>translate('supported'),icon:size=>h(GraphIcon,{size}),order:35,
+          single:true,bottomOnly:true,component:WorkspacePanel
+        }));
       }
     };
   }

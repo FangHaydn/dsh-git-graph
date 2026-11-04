@@ -43,20 +43,20 @@ export function apply(ctx) {
       if (!/^(feat|fix|docs|style|refactor|perf|test|build|ci|chore|revert)(\([^\n)]+\))?!?: .+/.test(text)) throw new Error('The model did not return a Conventional Commits message. Try again.');
       return text;
     };
-    const service = new GitGraphService(run, generate);
+    const service = new GitGraphService(run, generate, (directory, signal) => ctx.workingDirectory.set(agent, directory, signal));
     service.locks = locks;
     return service.execute(cwd, request, signal);
   }
-  ctx.commands.register({ name: 'local-git-graph', description: 'Git Graph sidebar operations',
+  ctx.commands.register({ name: 'local-git-graph', description: 'Git Graph operations, local branch selection, and existing worktree selection',
     input: { hint: 'JSON Git Graph request' },
     async handler({ agent, rawInput, signal }) {
       try { return { kind: 'success', text: JSON.stringify(await operate(agent, JSON.parse(rawInput), signal)) }; }
       catch (error) { return { kind: 'error', text: error.message }; }
     } });
   ctx.tools.register({ name: 'git_graph',
-    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree. Stash drop deletes the selected saved stash. Commit or drop a stash only when the user requests it.',
+    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree; switchWorktree changes this session working directory to one of the repository existing worktrees. Stash drop deletes the selected saved stash. Commit or drop a stash only when the user requests it.',
     parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: {
-      action: { type: 'string', enum: ['snapshot', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop'] },
+      action: { type: 'string', enum: ['snapshot', 'workspace', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop'] },
       limit: { type: 'integer', description: 'History count, 50–1000; default 100.' },
       ref: { type: 'string', description: 'Full refs/heads, refs/remotes or refs/tags name for history filtering.' },
       hash: { type: 'string', description: 'Full commit or stash hash.' },
@@ -68,6 +68,7 @@ export function apply(ctx) {
       message: { type: 'string', description: 'Commit message or stash title.' },
       name: { type: 'string', description: 'New branch or tag name.' },
       branch: { type: 'string', description: 'Existing local branch to check out; otherwise checkout detaches at hash.' },
+      worktreePath: { type: 'string', description: 'Absolute path from workspace worktrees; switchWorktree changes this session working directory to that registered worktree.' },
       locale: { type: 'string', description: 'Commit draft language, such as zh or en.' }
     } },
     output: { schema: { type: 'object', additionalProperties: true }, render: (_args, value) => [{ type: 'text', text: JSON.stringify(value) }] },
