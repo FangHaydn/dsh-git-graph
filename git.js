@@ -143,10 +143,19 @@ export class GitGraphService {
       if (action === 'commit') {
         const message = String(request.message || '').trim();
         if (!message || message.length > 16000 || message.includes('\0')) throw new Error('Enter a valid commit message');
-        if (parseStatus((await g(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).stdout).some(f => f.conflict)) throw new Error('Resolve merge conflicts before committing');
+        const status = parseStatus((await g(['status', '--porcelain=v1', '-z', '--untracked-files=all'])).stdout);
+        if (status.some(f => f.conflict)) throw new Error('Resolve merge conflicts before committing');
         const staged = await g(['diff', '--cached', '--quiet'], { allowFailure: true });
-        if (staged.code === 0) throw new Error('Stage changes before committing');
-        if (staged.code !== 1) throw new Error(staged.stderr);
+        if (staged.code !== 0 && staged.code !== 1) throw new Error(staged.stderr);
+        // Match message generation: commit the staged content when anything is staged,
+        // otherwise stage every change (including untracked files) and commit that.
+        if (staged.code === 0) {
+          if (!status.length) throw new Error('No changes to commit');
+          await g(['add', '-A', '--', '.']);
+          const afterStage = await g(['diff', '--cached', '--quiet'], { allowFailure: true });
+          if (afterStage.code === 0) throw new Error('No changes to commit');
+          if (afterStage.code !== 1) throw new Error(afterStage.stderr);
+        }
         await g(['commit', '-F', '-'], { input: message });
         return { ok: true, hash: (await g(['rev-parse', 'HEAD'])).stdout.trim() };
       }

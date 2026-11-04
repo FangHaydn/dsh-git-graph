@@ -400,19 +400,31 @@ test('log limits are bounded, hasMore is correct, and selecting a ref excludes o
   assert.equal(bounded.commits.at(-1).title, 'Long history 6');
 });
 
-test('commit refuses unstaged-only changes and commits only the staged version', async t => {
+test('commit auto-stages unstaged and untracked changes when the index is clean', async t => {
   const { execute, put, commit, git, cwd } = await repository(t);
   await put('tracked.txt', 'base\n');
   const initial = await commit();
   await put('tracked.txt', 'unstaged\n');
-  await assert.rejects(execute({ action: 'commit', message: 'Must refuse' }), /Stage changes before committing/);
-  assert.equal((await git(['rev-parse', 'HEAD'])).stdout.trim(), initial);
+  await put('new-file.txt', 'brand new\n');
+  const result = await execute({ action: 'commit', message: 'Auto staged' });
+  assert.notEqual((await git(['rev-parse', 'HEAD'])).stdout.trim(), initial);
+  assert.equal((await git(['show', `${result.hash}:tracked.txt`])).stdout, 'unstaged\n');
+  assert.equal((await git(['show', `${result.hash}:new-file.txt`])).stdout, 'brand new\n');
+  assert.equal(await readFile(path.join(cwd, 'tracked.txt'), 'utf8'), 'unstaged\n');
+  assert.equal((await execute({ action: 'snapshot' })).files.length, 0);
+});
+
+test('commit keeps staged content when the index already has changes', async t => {
+  const { execute, put, commit, git, cwd } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  await commit();
+  await put('tracked.txt', 'staged\n');
   await execute({ action: 'stage', paths: ['tracked.txt'] });
-  await put('tracked.txt', 'later unstaged version\n');
+  await put('tracked.txt', 'working\n');
   await assert.rejects(execute({ action: 'commit', message: ' \n ' }), /valid commit message/);
   const result = await execute({ action: 'commit', message: 'Staged content only' });
-  assert.equal((await git(['show', `${result.hash}:tracked.txt`])).stdout, 'unstaged\n');
-  assert.equal(await readFile(path.join(cwd, 'tracked.txt'), 'utf8'), 'later unstaged version\n');
+  assert.equal((await git(['show', `${result.hash}:tracked.txt`])).stdout, 'staged\n');
+  assert.equal(await readFile(path.join(cwd, 'tracked.txt'), 'utf8'), 'working\n');
   const entry = file(await execute({ action: 'snapshot' }), 'tracked.txt');
   assert.equal(entry.staged, false);
   assert.equal(entry.unstaged, true);
