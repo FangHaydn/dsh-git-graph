@@ -308,6 +308,10 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
             anchor:h('button',{type:'button',className:'gg-branch-button',title:workspace.repository,'aria-label':t('gitBranch')+': '+(workspace.branch||t('worktreeDetached')),'aria-haspopup':'menu','aria-expanded':open,disabled:busy,onClick:()=>{setError('');setOpen(value=>!value);}},h(Icon,{name:'branch',size:16}),h('span',{style:{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}},busy?t('branchSwitching'):workspace.branch||t('worktreeDetached')),h(Icon,{name:'chevronDown',size:14}))}),
             error&&h('span',{role:'alert',title:error,style:{maxWidth:180,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',color:'var(--dsw-alias-state-error-primary)',fontSize:12}},t('branchFailed')));
         }
+        function ConversationPanel({sessionId,useSession}) {
+          const cwd=useSession(session=>session.cwd);
+          return h(WorkspacePanel,{key:cwd,scope:{sessionId},visible:true});
+        }
         function WorkspacePanel({scope,visible}) {
           const executeCommand=useCallback((line,signal)=>ctx.remote.commands.execute(scope.sessionId,line,[],signal),[scope.sessionId]);
           const tab=useMemo(()=>({visible}),[visible]);
@@ -445,6 +449,7 @@ div:has(> [data-slot="conversation.hero.options"] .gg-branch-selector){margin-le
                 h('div',{className:'gg-group-head'},h('span',null,t('files'),' ',h('span',{className:'gg-count'},detail.files.length))),...detail.files.map(file=>h('div',{className:'gg-file',key:file.path},h(Button,{label:(file.original?file.original+' → ':'')+file.path,className:'gg-file-main',onClick:()=>openDiff(file,false,detail)},h('span',{className:'gg-status'},file.status),h('span',{className:'gg-file-label'},file.path))))),
                 diff&&(diff.loading?h('div',{className:'gg-loading'},t('loading')):diff.error?h('div',{role:'alert'},diff.error):h(React.Fragment,null,h('div',{className:'gg-path gg-small'},diff.path),h(Diff,{value:diff,t}))))));
         }
+        ctx.slots.inject('conversation.view',()=>ctx.slots.register({name:'conversation.view',id:ID,label:()=> 'Git Graph',order:35,inject:sessionId=>({sessionId})},ConversationPanel));
         ctx.effect(()=>ctx.sidebarRightTabs.register({id:ID,kind:'local-git-graph',title:()=> 'Git Graph',keepMounted:true,guide:[{id:'main',order:35,title:()=> 'Git Graph',description:()=>translate('supported'),icon:GraphIcon}]}));
         ctx.slots.inject('sidebar.right.pane.tab',()=>ctx.slots.register({name:'sidebar.right.pane.tab',key:ID,inject:sessionId=>({executeCommand:(line,signal)=>ctx.remote.commands.execute(sessionId,line,[],signal)})},NativePanel));
         ctx.slots.inject('sidebar.right.pane.tab.title',()=>ctx.slots.register({name:'sidebar.right.pane.tab.title',key:ID},TabTitle));
