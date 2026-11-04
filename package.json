@@ -1,6 +1,7 @@
 {
   "name": "@local/dsh-git-graph",
-  "version": "1.0.0",
+  "version": "0.1.0",
+  "license": "MIT",
   "description": "Git changes, AI Conventional Commits, and a commit graph in the DSH right sidebar",
   "private": true,
   "type": "module",
