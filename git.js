@@ -40,7 +40,7 @@ export function parseWorktrees(text) {
 }
 
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b';
-const WRITE = new Set(['stage', 'unstage', 'commit', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
+const WRITE = new Set(['stage', 'unstage', 'commit', 'fetch', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
 const ACTIONS = new Set(['snapshot', 'workspace', 'detail', 'diff', 'generate', ...WRITE]);
 const hashValue = v => { if (!/^[a-f0-9]{40,64}$/.test(v || '')) throw new Error('A full commit hash is required'); return v; };
 const fileValue = v => {
@@ -80,11 +80,12 @@ export class GitGraphService {
       }
       if (action === 'snapshot') {
         const limit = Math.max(50, Math.min(1000, Number(request.limit) || 100));
-        const [status, head, refsResult, stashResult] = await Promise.all([
+        const [status, head, refsResult, stashResult, remotes] = await Promise.all([
           g(['status', '--porcelain=v1', '-z', '--untracked-files=all']),
           g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true }),
           g(['for-each-ref', '--format=%(objectname)%00%(*objectname)%00%(refname)%00%(symref)%00', 'refs/heads', 'refs/remotes', 'refs/tags']),
-          g(['stash', 'list', '--format=%H%x00%gd%x00%gs%x00%at%x00%P%x00'])
+          g(['stash', 'list', '--format=%H%x00%gd%x00%gs%x00%at%x00%P%x00']),
+          g(['remote'])
         ]);
         const refs = [];
         const refFields = refsResult.stdout.split('\0');
@@ -117,7 +118,7 @@ export class GitGraphService {
             .map(commit => stashParents.has(commit.hash) ? { ...commit, parents: stashParents.get(commit.hash) } : commit);
         }
         return { repository: root, branch: head.stdout.trim() || (headHash.code === 0 ? headHash.stdout.trim().slice(0, 8) : 'HEAD'),
-          head: headHash.code === 0 ? headHash.stdout.trim() : null, files: parseStatus(status.stdout), refs, stashes,
+          head: headHash.code === 0 ? headHash.stdout.trim() : null, files: parseStatus(status.stdout), refs, stashes, hasRemotes: !!remotes.stdout.trim(),
           commits: commits.slice(0, limit), hasMore: commits.length > limit };
       }
       if (action === 'detail') {
@@ -224,6 +225,12 @@ export class GitGraphService {
         if (!this.switchWorktree) throw new Error('Session worktree switching is unavailable');
         await this.switchWorktree(target.path, signal);
         return { ok: true, repository: target.path };
+      }
+      if (action === 'fetch') {
+        const remotes = await g(['remote']);
+        if (!remotes.stdout.trim()) throw new Error('No Git remotes configured. Add a remote and try again.');
+        await g(['fetch', '--all']);
+        return { ok: true };
       }
       if (action === 'checkout') {
         if (request.branch) {

@@ -567,6 +567,50 @@ test('unsafe repository paths, revisions, parent hashes and ref names are reject
   assert.equal((await git(['rev-parse', 'HEAD'])).stdout.trim(), hash);
 });
 
+test('fetch updates every configured remote without changing HEAD, index or working files', async t => {
+  const local = await repository(t), origin = await repository(t), upstream = await repository(t);
+  await local.put('local.txt', 'local base\n');
+  const head = await local.commit('Local commit');
+  await local.put('local.txt', 'staged contents\n');
+  await local.execute({ action: 'stage' });
+  await local.put('local.txt', 'working contents\n');
+  await local.put('untracked.txt', 'untracked contents\n');
+  await origin.put('remote.txt', 'origin contents\n');
+  const originHead = await origin.commit('Origin commit');
+  await upstream.put('remote.txt', 'upstream contents\n');
+  const upstreamHead = await upstream.commit('Upstream commit');
+  assert.equal((await local.execute({ action: 'snapshot' })).hasRemotes, false);
+  await local.git(['remote', 'add', 'origin', origin.cwd]);
+  await local.git(['remote', 'add', 'upstream', upstream.cwd]);
+  const before = await local.execute({ action: 'snapshot' });
+  assert.equal(before.hasRemotes, true);
+  assert.equal(before.refs.some(ref => ref.kind === 'remote'), false);
+  assert.deepEqual(await local.execute({ action: 'fetch' }), { ok: true });
+  const after = await local.execute({ action: 'snapshot' });
+  assert.ok(after.refs.some(ref => ref.fullName === 'refs/remotes/origin/main' && ref.hash === originHead));
+  assert.ok(after.refs.some(ref => ref.fullName === 'refs/remotes/upstream/main' && ref.hash === upstreamHead));
+  assert.ok(after.commits.some(commit => commit.hash === originHead));
+  assert.ok(after.commits.some(commit => commit.hash === upstreamHead));
+  assert.equal(after.head, head);
+  assert.equal(after.branch, 'main');
+  assert.deepEqual(after.files, before.files);
+  assert.equal((await local.git(['show', ':local.txt'])).stdout, 'staged contents\n');
+  assert.equal(await readFile(path.join(local.cwd, 'local.txt'), 'utf8'), 'working contents\n');
+  assert.equal(await readFile(path.join(local.cwd, 'untracked.txt'), 'utf8'), 'untracked contents\n');
+});
+
+test('fetch reports missing or unavailable remotes and releases its lock for retry', async t => {
+  const local = await repository(t), remote = await repository(t);
+  await remote.put('remote.txt', 'remote contents\n');
+  const head = await remote.commit();
+  await assert.rejects(local.execute({ action: 'fetch' }), /No Git remotes configured/);
+  await local.git(['remote', 'add', 'origin', path.join(remote.cwd, 'missing-remote')]);
+  await assert.rejects(local.execute({ action: 'fetch' }), /does not appear to be a git repository/);
+  await local.git(['remote', 'set-url', 'origin', remote.cwd]);
+  await local.execute({ action: 'fetch' });
+  assert.equal((await local.git(['rev-parse', 'refs/remotes/origin/main'])).stdout.trim(), head);
+});
+
 test('workspace lists the current branch and registered worktrees', async t => {
   const { execute, put, commit, git, cwd } = await repository(t);
   await put('tracked.txt', 'base\n');

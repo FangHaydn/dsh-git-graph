@@ -218,7 +218,7 @@ function instrumentedSource() {
   return source.slice(0, at) + '\n    __ggCapture({ fileTree, historyLayout, ROW_HEIGHT });' + source.slice(at);
 }
 
-function runModule({ instrument = false } = {}) {
+function runModule({ instrument = false, timers = {} } = {}) {
   let factory = null, captured = null;
   const sandbox = {
     window: {
@@ -232,7 +232,7 @@ function runModule({ instrument = false } = {}) {
     navigator: { platform: 'Linux', clipboard: { writeText: async () => {} } },
     AbortController, AbortSignal, Intl, console,
     ResizeObserver: class { observe() {} disconnect() {} },
-    setTimeout, clearTimeout,
+    setTimeout: timers.setTimeout || setTimeout, clearTimeout: timers.clearTimeout || clearTimeout,
     __ggCapture(value) { captured = value; },
   };
   vm.runInNewContext(instrument ? instrumentedSource() : source, sandbox);
@@ -340,7 +340,7 @@ const PANEL_COMMITS = [
 
 function snapshotValue() {
   return {
-    repository: '/repo', branch: 'main', head: 'c0', hasMore: false,
+    repository: '/repo', branch: 'main', head: 'c0', hasMore: false, hasRemotes: true,
     files: [], refs: [], stashes: [],
     commits: PANEL_COMMITS.map(commit => ({ ...commit, parents: [...commit.parents] })),
   };
@@ -381,8 +381,8 @@ function createExecutor({ deferredDetails = false } = {}) {
   return { execute, calls, detailResolvers };
 }
 
-function mountPanel(executor) {
-  const { plugin } = runModule();
+function mountPanel(executor, moduleOptions) {
+  const { plugin } = runModule(moduleOptions);
   const slots = new Map();
   plugin.apply({
     effect: fn => fn(),
@@ -513,6 +513,191 @@ test('fileTree keeps full paths and lets a folder and a file share a basename', 
   assert.equal(lib.files.length, 1);
   assert.equal(lib.files[0], files[2]);
   assert.equal(lib.files[0].path, 'src/lib/util.js');
+});
+
+test('fetch visibility follows configured remotes when the panel refreshes', async () => {
+  const executor = createExecutor(), execute = executor.execute;
+  let hasRemotes = false;
+  executor.execute = line => {
+    const result = execute(line);
+    if (JSON.parse(line.replace('/local-git-graph ', '')).action === 'snapshot') {
+      return Promise.resolve(rpcSuccess({ ...snapshotValue(), hasRemotes }));
+    }
+    return result;
+  };
+  const runtime = mountPanel(executor);
+  await runtime.act();
+  const fetchButton = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'fetch');
+  const refresh = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'refresh').props.onClick();
+  assert.equal(fetchButton(), undefined);
+  hasRemotes = true;
+  await runtime.act(refresh);
+  assert.ok(fetchButton(), 'configured remotes show fetch even before any remote refs exist');
+  hasRemotes = false;
+  await runtime.act(refresh);
+  assert.equal(fetchButton(), undefined, 'removing all remotes hides fetch after refresh');
+});
+
+test('fetch visibility supports old Host snapshots while respecting explicit remote configuration', async () => {
+  const remote = { kind: 'remote', name: 'origin/main', fullName: 'refs/remotes/origin/main', hash: 'c0' };
+  const cases = [
+    { hasRemotes: undefined, refs: [remote], visible: true },
+    { hasRemotes: undefined, refs: [], visible: false },
+    { hasRemotes: false, refs: [remote], visible: false },
+    { hasRemotes: true, refs: [], visible: true },
+  ];
+  for (const { hasRemotes, refs, visible } of cases) {
+    const executor = createExecutor(), execute = executor.execute;
+    executor.execute = line => {
+      const result = execute(line);
+      if (JSON.parse(line.replace('/local-git-graph ', '')).action === 'snapshot') {
+        return Promise.resolve(rpcSuccess({ ...snapshotValue(), hasRemotes, refs }));
+      }
+      return result;
+    };
+    const runtime = mountPanel(executor);
+    await runtime.act();
+    const fetch = hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'fetch');
+    assert.equal(!!fetch, visible, `hasRemotes=${hasRemotes}, remote refs=${refs.length}`);
+  }
+});
+
+function fakeTimers() {
+  const jobs = new Map();
+  let nextId = 0;
+  return {
+    jobs,
+    setTimeout(fn, delay) { const id = ++nextId; jobs.set(id, { fn, delay }); return id; },
+    clearTimeout(id) { jobs.delete(id); },
+    fire(id) { const job = jobs.get(id); assert.ok(job); jobs.delete(id); job.fn(); },
+  };
+}
+
+test('history header fetch works while folded, prevents duplicates and shows a closing toast', async () => {
+  const executor = createExecutor(), execute = executor.execute;
+  let finishFetch;
+  executor.execute = line => {
+    const result = execute(line);
+    if (JSON.parse(line.replace('/local-git-graph ', '')).action === 'fetch') {
+      return new Promise(resolve => { finishFetch = () => resolve(rpcSuccess({ ok: true })); });
+    }
+    return result;
+  };
+  const timers = fakeTimers();
+  const runtime = mountPanel(executor, { timers });
+  await runtime.act();
+  const history = () => hostsOf(runtime).find(node => node.type === 'section' && node.props.className.startsWith('gg-history'));
+  const button = label => collectHosts(history()).find(node => node.type === 'button' && node.props['aria-label'] === label);
+  assert.equal(button('fetch').props.title, 'fetch');
+  assert.ok(button('fetch').children.some(node => node.type === 'svg'));
+  await runtime.act(() => button('history').props.onClick());
+  assert.ok(history().props.className.includes('gg-folded'));
+  const snapshots = executor.calls.filter(call => call.action === 'snapshot').length;
+  const initialFetch = button('fetch');
+  await runtime.act(() => { initialFetch.props.onClick(); initialFetch.props.onClick(); });
+  assert.equal(executor.calls.filter(call => call.action === 'fetch').length, 1);
+  assert.equal(button('fetching').props.disabled, true);
+  assert.equal(button('fetching').props['aria-busy'], true);
+  assert.ok(button('fetching').children[0].props.className.includes('gg-spinning'));
+  assert.equal(executor.calls.filter(call => call.action === 'snapshot').length, snapshots);
+  finishFetch();
+  await runtime.act();
+  assert.equal(executor.calls.filter(call => call.action === 'snapshot').length, snapshots + 1);
+  assert.equal(button('fetch').props.disabled, false);
+  assert.equal(button('fetch').props['aria-busy'], false);
+  const toast = () => hostsOf(runtime).find(node => node.props.className === 'gg-toast-portal');
+  assert.equal(nodeText(toast()), 'fetched');
+  const timer = [...timers.jobs.entries()].find(([,job]) => job.delay === 4000)?.[0];
+  assert.ok(timer, 'success toast auto-dismiss is scheduled');
+  timers.fire(timer);
+  await runtime.act();
+  assert.equal(toast(), undefined, 'success toast disappears automatically');
+});
+
+test('repeated successes restart the toast lifetime and stale timers cannot close a newer toast', async () => {
+  const executor = createExecutor(), timers = fakeTimers();
+  const runtime = mountPanel(executor, { timers });
+  await runtime.act();
+  const fetch = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'fetch').props.onClick();
+  const toast = () => hostsOf(runtime).find(node => node.props.className === 'gg-toast-portal');
+  await runtime.act(fetch);
+  const [firstId, firstJob] = [...timers.jobs.entries()].find(([,job]) => job.delay === 4000);
+  await runtime.act(fetch);
+  assert.equal(timers.jobs.has(firstId), false, 'previous timer is cancelled');
+  const secondId = [...timers.jobs.entries()].find(([,job]) => job.delay === 4000)?.[0];
+  assert.ok(secondId && secondId !== firstId, 'the next success starts a fresh timer');
+  firstJob.fn();
+  await runtime.act();
+  assert.equal(nodeText(toast()), 'fetched', 'an already queued old timer cannot dismiss the latest success');
+  assert.equal(hostsOf(runtime).some(node => node.props.className === 'gg-notice'), false, 'success is absent from the persistent notice area');
+  timers.fire(secondId);
+  await runtime.act();
+  assert.equal(toast(), undefined);
+});
+
+test('commits show a temporary success toast without a separate auto-stage toast', async () => {
+  const executor = createExecutor(), execute = executor.execute, timers = fakeTimers();
+  executor.execute = line => {
+    const result = execute(line);
+    if (JSON.parse(line.replace('/local-git-graph ', '')).action === 'snapshot') {
+      return Promise.resolve(rpcSuccess({ ...snapshotValue(), files: [{ path: 'work.txt', index: ' ', worktree: 'M', staged: false, unstaged: true, conflict: false }] }));
+    }
+    return result;
+  };
+  const runtime = mountPanel(executor, { timers });
+  await runtime.act();
+  const input = hostsOf(runtime).find(node => node.type === 'textarea');
+  await runtime.act(() => input.props.onChange({ target: { value: 'feat: add change' } }));
+  const commit = hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'commit');
+  await runtime.act(() => commit.props.onClick());
+  assert.deepEqual(executor.calls.filter(call => ['stage', 'commit'].includes(call.action)).map(call => call.action), ['stage', 'commit']);
+  const toast = hostsOf(runtime).find(node => node.props.className === 'gg-toast-portal');
+  assert.equal(nodeText(toast), 'committedSuccess');
+  assert.ok([...timers.jobs.values()].some(job => job.delay === 4000), 'commit success toast is temporary');
+});
+
+test('fetch errors are visible and the button can retry', async () => {
+  const executor = createExecutor(), execute = executor.execute;
+  let fail = true;
+  executor.execute = async line => {
+    const result = await execute(line);
+    if (fail && JSON.parse(line.replace('/local-git-graph ', '')).action === 'fetch') {
+      return { ok: true, value: { result: { kind: 'error', text: 'Remote connection failed' } } };
+    }
+    return result;
+  };
+  const runtime = mountPanel(executor);
+  await runtime.act();
+  const fetchButton = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'fetch');
+  const snapshots = executor.calls.filter(call => call.action === 'snapshot').length;
+  await runtime.act(() => fetchButton().props.onClick());
+  assert.ok(hostsOf(runtime).some(node => node.props.role === 'alert' && nodeText(node).includes('Remote connection failed')));
+  assert.equal(hostsOf(runtime).some(node => node.props.className === 'gg-toast-portal'), false, 'failed operations cannot show success toasts');
+  assert.equal(executor.calls.filter(call => call.action === 'snapshot').length, snapshots);
+  assert.equal(fetchButton().props.disabled, false);
+  fail = false;
+  await runtime.act(() => fetchButton().props.onClick());
+  assert.equal(executor.calls.filter(call => call.action === 'fetch').length, 2);
+  assert.equal(executor.calls.filter(call => call.action === 'snapshot').length, snapshots + 1);
+  assert.equal(hostsOf(runtime).some(node => node.props.role === 'alert'), false);
+});
+
+test('fetch on an old Host explains that DSH must restart and leaves the button available', async () => {
+  const executor = createExecutor(), execute = executor.execute;
+  executor.execute = async line => {
+    const result = await execute(line);
+    if (JSON.parse(line.replace('/local-git-graph ', '')).action === 'fetch') {
+      return { ok: true, value: { result: { kind: 'error', text: 'Unknown Git Graph action' } } };
+    }
+    return result;
+  };
+  const runtime = mountPanel(executor);
+  await runtime.act();
+  const fetchButton = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'fetch');
+  await runtime.act(() => fetchButton().props.onClick());
+  assert.ok(hostsOf(runtime).some(node => node.props.role === 'alert' && nodeText(node).includes('fetchUnavailable')));
+  assert.equal(hostsOf(runtime).some(node => node.props.role === 'alert' && nodeText(node).includes('Unknown Git Graph action')), false);
+  assert.equal(fetchButton().props.disabled, false);
 });
 
 test('Panel opens one inline detail per row, toggles it closed, and keeps offsets aligned', async () => {
