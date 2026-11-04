@@ -2,11 +2,13 @@ window.__ModuleLoader__.load({
   id: '@local/dsh-git-graph',
   factory(require) {
     const React = require('react'), h = React.createElement;
-    const { useState, useEffect, useRef, useMemo, useCallback, useSyncExternalStore } = React;
+    const { createPortal } = require('react-dom');
+    const { useState, useEffect, useLayoutEffect, useRef, useMemo, useCallback, useSyncExternalStore } = React;
+    const ROW_HEIGHT = 32;
     const ID = '@local/dsh-git-graph', NS = 'localGitGraph';
     const dictionaries = {
-      zh: { changes:'当前修改', history:'Git 历史', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', commitDone:'提交成功', done:'操作完成', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
-      en: { changes:'Changes', history:'Git History', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', commitDone:'Commit created', done:'Operation completed', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
+      zh: { changes:'当前修改', history:'Git 历史', staged:'暂存区', worktree:'工作区', clean:'工作区干净', empty:'暂无提交，暂存文件后创建首次提交。', noRepo:'当前会话目录不是 Git 仓库。切换到项目目录后刷新。', refresh:'刷新', message:'提交信息', placeholder:'提交信息（{shortcut} 提交）', placeholderBranch:'提交信息（{shortcut} 提交到 "{branch}"）', generate:'AI 生成', generating:'生成中…', commit:'提交', committing:'提交中…', stage:'暂存', unstage:'取消暂存', stageAll:'全部暂存', unstageAll:'全部取消暂存', loading:'正在读取 Git…', retry:'重试', all:'所有分支', search:'搜索提交标题、作者或 Hash', next:'下一个匹配', more:'加载更多', noChanges:'暂无修改', close:'关闭详情', detail:'提交详情', files:'文件', parent:'比较父提交', root:'首次提交', author:'作者', date:'时间', hash:'Hash', copy:'复制 Hash', copied:'已复制', branch:'分支', tag:'标签', remote:'远程', stash:'Stash', stashSave:'储藏修改', stashApply:'应用 Stash', stashDrop:'Drop Stash', dropConfirm:'将删除此 Stash 的储藏记录，删除后无法从 Stash 列表恢复。确定继续？', name:'名称', commitLabel:'提交', merge:'合并提交', parents:'父提交', messageBody:'提交说明', previewHint:'点击历史项查看文件与差异', createBranch:'创建分支', createTag:'创建标签', checkout:'切换到此提交', checkoutBranch:'切换分支', cancel:'取消', confirm:'确认', detached:'将以分离 HEAD 状态切换到此提交。', applyConfirm:'将 Stash 的修改应用到工作区，保留原 Stash。', saveConfirm:'将工作区和暂存区的修改（含未跟踪文件）保存为 Stash。', checkoutConfirm:'将切换工作区分支，Git 会阻止覆盖有冲突的本地修改。', workingDiff:'工作区差异', stagedDiff:'暂存区差异', noDiff:'没有文本差异，可能是空文件、二进制文件或文件模式变化。', truncated:'内容较大，当前显示已截断。', draftTruncated:'AI 使用的差异已截断，请检查生成的提交信息。', conflict:'冲突', commitDone:'提交成功', done:'操作完成', noMatch:'没有匹配的提交', count:'条提交', selection:'选择一条提交查看完整信息和文件差异', title:'标题', newName:'输入名称', error:'操作失败', supported:'分支 · 标签 · Stash', aiHint:'优先根据暂存区差异生成 Conventional Commits；暂存区为空时使用工作区（含未跟踪文件），生成后可编辑。', moreLimit:'已显示 1000 条，请通过分支筛选缩小范围。' },
+      en: { changes:'Changes', history:'Git History', staged:'Staged Changes', worktree:'Working Tree', clean:'Working tree clean', empty:'No commits yet. Stage files to create the first commit.', noRepo:'The session directory is not a Git repository. Switch to a project directory and refresh.', refresh:'Refresh', message:'Commit message', placeholder:'Message ({shortcut} to commit)', placeholderBranch:'Message ({shortcut} to commit on "{branch}")', generate:'AI Generate', generating:'Generating…', commit:'Commit', committing:'Committing…', stage:'Stage', unstage:'Unstage', stageAll:'Stage All', unstageAll:'Unstage All', loading:'Reading Git…', retry:'Retry', all:'All branches', search:'Search title, author or hash', next:'Next match', more:'Load more', noChanges:'No changes', close:'Close details', detail:'Commit Details', files:'Files', parent:'Compare parent', root:'Root commit', author:'Author', date:'Date', hash:'Hash', copy:'Copy hash', copied:'Copied', branch:'Branch', tag:'Tag', remote:'Remote', stash:'Stash', stashSave:'Stash changes', stashApply:'Apply stash', stashDrop:'Drop Stash', dropConfirm:'Delete this saved stash? It cannot be restored from the stash list.', name:'Name', commitLabel:'Commit', merge:'Merge commit', parents:'Parents', messageBody:'Commit message', previewHint:'Click a history row to view files and diffs', createBranch:'Create branch', createTag:'Create tag', checkout:'Check out commit', checkoutBranch:'Switch branch', cancel:'Cancel', confirm:'Confirm', detached:'This checks out the commit with a detached HEAD.', applyConfirm:'Apply the stash to the working tree and keep the original stash.', saveConfirm:'Save staged and working changes, including untracked files, as a stash.', checkoutConfirm:'Switch the working branch. Git will refuse to overwrite conflicting local changes.', workingDiff:'Working Tree Diff', stagedDiff:'Staged Diff', noDiff:'No text diff. This may be an empty or binary file, or a mode change.', truncated:'Large content has been truncated.', draftTruncated:'The AI diff was truncated. Review the generated commit message.', conflict:'Conflict', commitDone:'Commit created', done:'Operation completed', noMatch:'No matching commits', count:'commits', selection:'Select a commit to view its details and file diffs', title:'Title', newName:'Enter a name', error:'Operation failed', supported:'Branches · Tags · Stashes', aiHint:'Generate an editable Conventional Commits draft from staged changes, or working tree changes (including untracked files) when nothing is staged.', moreLimit:'Showing 1000 commits. Filter by branch to narrow the history.' }
     };
     // Independent artwork inspired by Git Graph's blue / magenta / green graph motif.
     function GraphIcon({size = 18, className}) {
@@ -97,23 +99,32 @@ window.__ModuleLoader__.load({
 .dgg .gg-search input{flex:1;min-width:0}
 .dgg .gg-search button{flex:none;width:32px;padding:0}
 .dgg .gg-scroll{overflow:auto;flex:1 1 0%;min-height:64px;position:relative;overscroll-behavior:contain}
-.dgg .gg-row{position:absolute;left:0;right:0;height:64px;display:flex;align-items:stretch;border-radius:0!important;border-bottom:1px solid var(--gg-line)!important;padding:0 12px 0 6px!important;justify-content:flex-start!important;text-align:left;width:100%;gap:8px!important}
+.dgg .gg-row{position:absolute;left:0;right:0;height:${ROW_HEIGHT}px;display:flex;align-items:center;border-radius:0!important;border-bottom:1px solid var(--gg-line)!important;padding:0 12px 0 6px!important;justify-content:flex-start!important;text-align:left;width:100%;gap:8px!important}
 .dgg .gg-row.gg-match{background:var(--gg-match)}
 .dgg .gg-row:hover{background:var(--gg-hover)}
 .dgg .gg-row[aria-pressed=true]{background:var(--gg-selected);box-shadow:inset 2px 0 var(--gg-accent)}
 .dgg .gg-row:focus-visible{outline-offset:-2px}
-.dgg .gg-graph{flex:none;overflow:visible;height:64px}
-.dgg .gg-commit-text{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:3px}
-.dgg .gg-subject{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500}
-.dgg .gg-meta{display:flex;gap:8px;min-width:0;align-items:center;font-size:11px;color:var(--gg-muted);white-space:nowrap}
-.dgg .gg-meta .gg-author{max-width:28%;overflow:hidden;text-overflow:ellipsis}
-.dgg .gg-meta time{margin-left:auto;overflow:hidden;text-overflow:ellipsis}
-.dgg .gg-badges{display:flex;gap:4px;overflow:hidden;min-height:0;flex:none}
+.dgg .gg-graph{flex:none;overflow:visible;height:${ROW_HEIGHT}px}
+.dgg .gg-commit-line{flex:1;min-width:0;display:flex;align-items:center;gap:6px;overflow:hidden}
+.dgg .gg-subject{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:500}
+.dgg .gg-badges{display:flex;gap:4px;overflow:hidden;min-width:0;min-height:0;flex:none}
 .dgg .gg-badge{display:inline-flex;align-items:center;gap:3px;flex-shrink:0;font-size:10px;line-height:16px;border:1px solid color-mix(in srgb,var(--gg-ref-color) 65%,var(--gg-line));background:color-mix(in srgb,var(--gg-ref-color) 10%,var(--gg-bg));border-radius:3px;padding:0 4px;max-width:180px;white-space:nowrap;color:var(--gg-fg)}
 .dgg .gg-badge .gg-icon{color:var(--gg-ref-color)}
 .dgg .gg-badge-label{overflow:hidden;text-overflow:ellipsis}
 .dgg .gg-badge[data-kind=remote]{border-style:dashed}
 .dgg .gg-badge[data-kind=head]{font-weight:700;border-color:var(--gg-ref-color);background:color-mix(in srgb,var(--gg-ref-color) 20%,var(--gg-bg))}
+.dgg .gg-badges-compact{max-width:48%;flex:0 1 auto;align-items:center}
+.dgg .gg-badges-compact .gg-badge{max-width:120px;min-width:0;flex:0 1 auto}
+.dgg .gg-ref-more{flex:none;font-size:10px;color:var(--gg-muted)}
+.dgg.gg-preview{box-sizing:border-box;position:fixed;z-index:100;display:block;container-type:normal;width:min(440px,calc(100vw - 24px));height:auto;max-height:min(520px,calc(100dvh - 24px));overflow:auto;overscroll-behavior:contain;padding:14px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-1,var(--gg-bg));box-shadow:0 8px 28px color-mix(in srgb,var(--gg-fg) 18%,transparent);font-size:12px;user-select:text}
+.dgg .gg-preview-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;color:var(--gg-muted);font-size:11px;margin-bottom:6px}
+.dgg .gg-preview-title{font-size:14px;font-weight:600;line-height:1.5;overflow-wrap:anywhere;margin-bottom:10px}
+.dgg.gg-preview .gg-badges{flex-wrap:wrap;overflow:visible;margin-bottom:10px}
+.dgg.gg-preview .gg-badge{max-width:100%;white-space:normal;overflow-wrap:anywhere}
+.dgg.gg-preview .gg-kv{font-size:12px;grid-template-columns:60px minmax(0,1fr);gap:6px 10px}
+.dgg .gg-preview-message{border-top:1px solid var(--gg-line);padding-top:10px;margin-top:10px}
+.dgg .gg-preview-message>.gg-muted{font-size:11px;margin-bottom:5px}
+.dgg .gg-preview-hint{font-size:11px;color:var(--gg-muted);border-top:1px solid var(--gg-line);padding-top:10px;margin-top:12px}
 .dgg .gg-details{border-top:1px solid var(--dsw-alias-border-l2);max-height:45%;min-height:120px;display:flex;flex-direction:column;flex:0 1 auto;overflow:hidden}
 .dgg .gg-detail-body{padding:10px 12px;min-height:0;overflow:auto}
 .dgg .gg-detail-title{font-size:13px;font-weight:600;margin:0 0 8px;overflow-wrap:anywhere}
@@ -143,8 +154,7 @@ window.__ModuleLoader__.load({
 .dgg .gg-loading{color:var(--gg-muted);padding:10px 12px}
 .dgg .gg-path{overflow-wrap:anywhere}
 .dgg .gg-parent{width:100%;margin:6px 0}
-.dgg .gg-diff summary{cursor:pointer}@container(max-width:360px){.dgg .gg-meta{gap:5px;font-size:10px}
-.dgg .gg-changes-body{padding:8px}
+.dgg .gg-diff summary{cursor:pointer}@container(max-width:360px){.dgg .gg-changes-body{padding:8px}
 .dgg .gg-row{gap:4px!important;padding-right:6px!important}}@media(prefers-reduced-motion:reduce){.dgg *{transition:none!important;animation:none!important}}
 `;
     // Colour a commit by its branch, not by lane order: follow each ref's first-parent
@@ -180,10 +190,10 @@ window.__ModuleLoader__.load({
         const edges = [];
         incoming.forEach((lane,index) => {
           const laneColor = colorOf.get(lane.hash) || 0;
-          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:32,color:laneColor});
-          else { const target=next.findIndex(l=>l.hash===lane.hash); if(target>=0) edges.push({x1:index,y1:0,x2:target,y2:64,color:laneColor}); }
+          if (lane.hash === commit.hash) edges.push({x1:index,y1:0,x2:column,y2:ROW_HEIGHT/2,color:laneColor});
+          else { const target=next.findIndex(l=>l.hash===lane.hash); if(target>=0) edges.push({x1:index,y1:0,x2:target,y2:ROW_HEIGHT,color:laneColor}); }
         });
-        commit.parents.forEach((hash,index)=>{const target=next.findIndex(l=>l.hash===hash);edges.push({x1:column,y1:32,x2:target,y2:64,color:index === 0 ? color : (colorOf.get(hash) || 0)});});
+        commit.parents.forEach((hash,index)=>{const target=next.findIndex(l=>l.hash===hash);edges.push({x1:column,y1:ROW_HEIGHT/2,x2:target,y2:ROW_HEIGHT,color:index === 0 ? color : (colorOf.get(hash) || 0)});});
         width=Math.max(width,incoming.length,next.length,column+1); lanes=next;
         return {column,color,edges};
       });
@@ -191,10 +201,45 @@ window.__ModuleLoader__.load({
     }
     function Graph({row,width,head}) {
       const x = n => 9+n*14;
-      return h('svg',{className:'gg-graph',width:width*14+4,viewBox:`0 0 ${width*14+4} 64`,'aria-hidden':true},
+      return h('svg',{className:'gg-graph',width:width*14+4,height:ROW_HEIGHT,viewBox:`0 0 ${width*14+4} ${ROW_HEIGHT}`,'aria-hidden':true},
         ...row.edges.map((edge,i)=>h('path',{key:i,d:`M${x(edge.x1)} ${edge.y1} C${x(edge.x1)} ${(edge.y1+edge.y2)/2} ${x(edge.x2)} ${(edge.y1+edge.y2)/2} ${x(edge.x2)} ${edge.y2}`,fill:'none',stroke:laneColor(edge.color),strokeWidth:2})),
-        h('circle',{cx:x(row.column),cy:32,r:head?5:3.5,fill:'var(--gg-bg)',stroke:laneColor(row.color),strokeWidth:2}),
-        head&&h('circle',{cx:x(row.column),cy:32,r:2,fill:laneColor(row.color)}));
+        h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:head?5:3.5,fill:'var(--gg-bg)',stroke:laneColor(row.color),strokeWidth:2}),
+        head&&h('circle',{cx:x(row.column),cy:ROW_HEIGHT/2,r:2,fill:laneColor(row.color)}));
+    }
+    function RefBadges({items,head,color,t,compact=false}) {
+      const all=head?[{kind:'head',name:'HEAD'},...items]:items;
+      if(!all.length)return null;
+      const visible=compact?all.slice(0,2):all;
+      return h('span',{className:'gg-badges'+(compact?' gg-badges-compact':'')},...visible.map((item,index)=>h('span',{key:item.kind+item.name,className:'gg-badge','data-kind':item.kind,style:{'--gg-ref-color':laneColor(item.kind==='head'?color:index%laneColors.length)},'aria-label':item.kind==='head'?'HEAD':t(item.kind)+': '+item.name},h(Icon,{name:item.kind==='head'?'commit':item.kind==='tag'?'tag':item.kind==='stash'?'stash':item.kind==='remote'?'remote':'branch',size:11}),h('span',{className:'gg-badge-label'},!compact&&item.kind!=='head'?t(item.kind)+': '+item.name:item.name))),compact&&all.length>visible.length&&h('span',{className:'gg-ref-more'},'+'+(all.length-visible.length)));
+    }
+    function CommitPreview({value,id,items,head,color,t,fullDate,onEnter,onLeave,onClose}) {
+      const card=useRef(null),[position,setPosition]=useState(null);
+      const {commit,anchor}=value;
+      useLayoutEffect(()=>{
+        const element=card.current;if(!element||!anchor.isConnected)return;
+        const rect=anchor.getBoundingClientRect(),width=element.offsetWidth,height=element.offsetHeight,margin=12,gap=8;
+        const fitsLeft=rect.left>=width+gap+margin,fitsRight=rect.right+gap+width<=window.innerWidth-margin;
+        let left=fitsLeft?rect.left-width-gap:fitsRight?rect.right+gap:Math.min(rect.left,window.innerWidth-width-margin);
+        let top=rect.top;
+        if(!fitsLeft&&!fitsRight)top=rect.bottom+gap+height<=window.innerHeight-margin?rect.bottom+gap:rect.top-height-gap;
+        setPosition({left:Math.max(margin,left),top:Math.max(margin,Math.min(top,window.innerHeight-height-margin))});
+      },[anchor,commit]);
+      useEffect(()=>{
+        const key=event=>{if(event.key==='Escape')onClose();};
+        const outside=event=>{if(!card.current?.contains(event.target)&&!anchor.contains(event.target))onClose();};
+        const hidden=()=>{if(document.hidden)onClose();};
+        document.addEventListener('keydown',key);document.addEventListener('mousedown',outside);document.addEventListener('visibilitychange',hidden);
+        window.addEventListener('resize',onClose);window.addEventListener('blur',onClose);
+        return()=>{document.removeEventListener('keydown',key);document.removeEventListener('mousedown',outside);document.removeEventListener('visibilitychange',hidden);window.removeEventListener('resize',onClose);window.removeEventListener('blur',onClose);};
+      },[anchor,onClose]);
+      const kind=items.some(item=>item.kind==='stash')?'stash':commit.parents.length>1?'merge':commit.parents.length===0?'root':'commitLabel';
+      return createPortal(h('div',{className:'dgg gg-preview',id,ref:card,role:'tooltip',tabIndex:0,style:{left:position?.left??0,top:position?.top??0,visibility:position?'visible':'hidden'},onMouseEnter:onEnter,onMouseLeave:onLeave,onFocus:onEnter,onBlur:onLeave},
+        h('div',{className:'gg-preview-heading'},h('span',null,t(kind)),h('span',{className:'gg-mono'},commit.shortHash)),
+        h('div',{className:'gg-preview-title'},commit.title),
+        h(RefBadges,{items,head,color,t}),
+        h('dl',{className:'gg-kv'},h('dt',null,t('author')),h('dd',null,commit.author,commit.email&&h('span',{className:'gg-muted'},' <'+commit.email+'>')),h('dt',null,t('date')),h('dd',null,fullDate(commit.time)),h('dt',null,t('hash')),h('dd',{className:'gg-mono'},commit.hash),h('dt',null,t('parents')),h('dd',{className:'gg-mono'},commit.parents.length?commit.parents.map(parent=>h('div',{key:parent},parent)):t('root'))),
+        commit.body&&h('div',{className:'gg-preview-message'},h('div',{className:'gg-muted'},t('messageBody')),h('div',{className:'gg-body'},commit.body)),
+        h('div',{className:'gg-preview-hint'},t('previewHint'))),document.body);
     }
     return {
       inject:['slots','locale','sidebarRightTabs','sidebarRight','remote','remote.commands'],
@@ -210,7 +255,14 @@ window.__ModuleLoader__.load({
           const [foldChanges,setFoldChanges]=useState(false),[foldHistory,setFoldHistory]=useState(false);
           const [message,setMessage]=useState(''),[ref,setRef]=useState(''),[limit,setLimit]=useState(100),[query,setQuery]=useState('');
           const [detail,setDetail]=useState(null),[diff,setDiff]=useState(null),[dialog,setDialog]=useState(null),[name,setName]=useState('');
-          const [scroll,setScroll]=useState(0),[height,setHeight]=useState(500),[copied,setCopied]=useState(false);
+          const [scroll,setScroll]=useState(0),[height,setHeight]=useState(500),[copied,setCopied]=useState(false),[preview,setPreview]=useState(null);
+          const previewTimer=useRef(null),previewId='gg-preview-'+sessionId;
+          const keepPreview=useCallback(()=>clearTimeout(previewTimer.current),[]);
+          const dismissPreview=useCallback(()=>{clearTimeout(previewTimer.current);setPreview(null);},[]);
+          const hidePreview=()=>{clearTimeout(previewTimer.current);previewTimer.current=setTimeout(()=>setPreview(null),160);};
+          const showPreview=(commit,anchor)=>{clearTimeout(previewTimer.current);previewTimer.current=setTimeout(()=>{const rect=anchor.getBoundingClientRect(),bounds=anchor.closest('.gg-scroll')?.getBoundingClientRect();if(commit&&anchor.isConnected&&(!bounds||rect.bottom>bounds.top&&rect.top<bounds.bottom))setPreview({commit,anchor});},260);};
+          useEffect(()=>()=>clearTimeout(previewTimer.current),[]);
+          useEffect(()=>{dismissPreview();},[data,foldHistory,tab.visible,dismissPreview]);
           const viewport=useRef(null), generation=useRef(0), detailGeneration=useRef(0), pending=useRef(false), mounted=useRef(true);
           useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;generation.current++;detailGeneration.current++;};},[]);
           const call=useCallback(async request=>{
@@ -294,12 +346,11 @@ window.__ModuleLoader__.load({
           };
           const shortcut=/Mac|iPhone|iPad/.test(navigator.platform)?'Cmd+Enter':'Ctrl+Enter';
           const messagePlaceholder=t(data?.branch?'placeholderBranch':'placeholder').replace('{shortcut}',shortcut).replace('{branch}',data?.branch||'');
-          const date=value=>new Intl.DateTimeFormat(ctx.locale.getLocale().active?.startsWith('zh')?'zh-CN':'en',{month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(value);
-          const fullDate=value=>new Date(value).toLocaleString();
+          const fullDate=value=>new Intl.DateTimeFormat(ctx.locale.getLocale().active?.startsWith('zh')?'zh-CN':'en',{year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit',timeZoneName:'short'}).format(value);
           const group=(title,files,isStaged)=>h('div',null,
             h('div',{className:'gg-group-head'},h('span',null,title,' ',h('span',{className:'gg-count'},files.length)),h(Button,{label:t(isStaged?'unstageAll':'stageAll'),disabled:!!busy||!files.length,onClick:()=>action({action:isStaged?'unstage':'stage'})},h(Icon,{name:isStaged?'minus':'plus',size:14}))),
             files.length?files.map(file=>h('div',{className:'gg-file',key:file.path},h(Button,{label:(file.original?file.original+' → ':'')+file.path,className:'gg-file-main',onClick:()=>openDiff(file,isStaged)},h('span',{className:'gg-status '+(file.conflict?'gg-conflict':''),'data-status':file.conflict?'U':isStaged?file.index:file.worktree===' '?'?':file.worktree,title:file.conflict?t('conflict'):undefined},file.conflict?'U':isStaged?file.index:file.worktree===' '?'?':file.worktree),h('span',{className:'gg-file-label'},file.path)),h(Button,{label:t(isStaged?'unstage':'stage')+' '+file.path,disabled:!!busy,onClick:()=>action({action:isStaged?'unstage':'stage',paths:[file.path]})},h(Icon,{name:isStaged?'minus':'plus',size:14})))):h('div',{className:'gg-muted gg-small',style:{padding:'4px 8px'}},t('noChanges')));
-          const visibleStart=Math.max(0,Math.floor(scroll/64)-4),visibleEnd=Math.min(commits.length,Math.ceil((scroll+height)/64)+4);
+          const visibleStart=Math.max(0,Math.floor(scroll/ROW_HEIGHT)-4),visibleEnd=Math.min(commits.length,Math.ceil((scroll+height)/ROW_HEIGHT)+4);
           const confirmAction=()=>{const current=dialog;setDialog(null);action({...current.request,...(current.needsName?{name}:{} )},current.request.action==='stashDrop'?closeDetail:undefined);};
           return h('div',{className:'dgg','data-git-graph-version':'1.0.0'},h('style',null,css),
             h('div',{className:'gg-toolbar'},h(GraphIcon,{}),h('div',{className:'gg-repo'},h('div',{className:'gg-name',title:data?.repository||''},data?.repository?.split(/[\\/]/).pop()||'Git Graph'),h('div',{className:'gg-muted gg-small gg-mono'},data?.branch||t('supported'))),h(Button,{label:t('refresh'),disabled:!!busy,onClick:refresh},h(Icon,{name:'reload'}))),
@@ -309,9 +360,15 @@ window.__ModuleLoader__.load({
               h('section',{className:'gg-changes '+(foldChanges?'gg-folded':'')},h('div',{className:'gg-head'},h(Button,{label:t('changes'),'aria-expanded':!foldChanges,onClick:()=>setFoldChanges(!foldChanges)},h(Icon,{name:foldChanges?'chevronRight':'chevronDown',size:14,className:'gg-chevron'}),t('changes'),h('span',{className:'gg-count'},data.files.length)),h(Button,{label:t('stashSave'),disabled:!!busy||!data.files.length,onClick:()=>setDialog({title:t('stashSave'),description:t('saveConfirm'),request:{action:'stashSave'}})},h(Icon,{name:'stash',size:14}))),
                 !foldChanges&&h('div',{className:'gg-changes-body'},h('div',{className:'gg-compose'},h('div',{className:'gg-message-row'},h('textarea',{id:'gg-message-'+sessionId,'aria-label':t('message'),rows:1,value:message,placeholder:messagePlaceholder,title:messagePlaceholder,onChange:e=>setMessage(e.target.value),onKeyDown:e=>{if((e.metaKey||e.ctrlKey)&&e.key==='Enter'&&canCommit&&!busy){e.preventDefault();commitChanges();}}}),h(Button,{label:t(busy==='generate'?'generating':'generate'),title:t(busy==='generate'?'generating':'aiHint'),className:'gg-ai'+(busy==='generate'?' gg-generating':''),'aria-busy':busy==='generate',disabled:!!busy||(!staged.length&&!working.length),onClick:()=>action({action:'generate',locale:ctx.locale.getLocale().active},result=>setMessage(result.message))},h(Icon,{name:'sparkle',size:18}))),h(Button,{label:t(busy==='commit'?'committing':'commit'),className:'gg-primary gg-commit',disabled:!!busy||!canCommit,onClick:commitChanges})),group(t('staged'),staged,true),group(t('worktree'),working,false))),
               h('section',{className:'gg-history '+(foldHistory?'gg-folded':'')},h('div',{className:'gg-head'},h(Button,{label:t('history'),'aria-expanded':!foldHistory,onClick:()=>setFoldHistory(!foldHistory)},h(Icon,{name:foldHistory?'chevronRight':'chevronDown',size:14,className:'gg-chevron'}),t('history'),h('span',{className:'gg-count'},commits.length))),
-                !foldHistory&&h(React.Fragment,null,h('div',{className:'gg-filters'},h('select',{'aria-label':t('branch'),value:ref,onChange:e=>{setRef(e.target.value);setLimit(100);setScroll(0);viewport.current?.scrollTo(0,0);}},h('option',{value:''},t('all')),...data.refs.map(item=>h('option',{key:item.fullName,value:item.fullName},`${t(item.kind)}: ${item.name}`))),h('div',{className:'gg-search'},h('input',{type:'search','aria-label':t('search'),placeholder:t('search'),value:query,onChange:e=>setQuery(e.target.value)}),query&&h(Button,{label:t('next')+' ('+matches.length+')',disabled:!matches.length,onClick:()=>{const index=matches.find(i=>i*64>scroll+2)??matches[0];viewport.current?.scrollTo({top:index*64});}},h(Icon,{name:'next',size:14})))),
-                  h('div',{className:'gg-scroll',ref:viewport,onScroll:e=>setScroll(e.currentTarget.scrollTop),'aria-label':t('history')},commits.length?h('div',{style:{height:commits.length*64,position:'relative'}},...commits.slice(visibleStart,visibleEnd).map((commit,n)=>{const index=visibleStart+n;return h('button',{type:'button',key:commit.hash,className:'gg-row '+(matches.includes(index)?'gg-match':''),style:{top:index*64},'aria-pressed':detail?.hash===commit.hash,title:commit.title+'\n'+commit.hash+'\n'+commit.author+' · '+fullDate(commit.time),onClick:()=>openCommit(commit)},h(Graph,{row:graph.rows[index],width:graph.width,head:data.head===commit.hash}),h('span',{className:'gg-commit-text'},h('span',{className:'gg-subject'},commit.title),h('span',{className:'gg-meta'},h('span',{className:'gg-mono'},commit.shortHash),h('span',{className:'gg-author'},commit.author),h('time',{dateTime:new Date(commit.time).toISOString(),title:fullDate(commit.time)},date(commit.time))),(refsAt.get(commit.hash)||[]).length>0&&h('span',{className:'gg-badges'},...(refsAt.get(commit.hash)||[]).map((item,refIndex)=>{const colorIndex=refIndex%laneColors.length;return h('span',{key:item.kind+item.name,className:'gg-badge','data-kind':item.kind,style:{'--gg-ref-color':laneColor(colorIndex)},title:t(item.kind)+': '+item.name},h(Icon,{name:item.kind==='tag'?'tag':item.kind==='stash'?'stash':item.kind==='remote'?'remote':'branch',size:11}),h('span',{className:'gg-badge-label'},item.name));}),data.head===commit.hash&&h('span',{className:'gg-badge','data-kind':'head',style:{'--gg-ref-color':laneColor(graph.rows[index].color)}},h(Icon,{name:'commit',size:11}),h('span',{className:'gg-badge-label'},'HEAD')))));})):h('div',{className:'gg-empty'},t('empty'))),
+                !foldHistory&&h(React.Fragment,null,h('div',{className:'gg-filters'},h('select',{'aria-label':t('branch'),value:ref,onChange:e=>{setRef(e.target.value);setLimit(100);setScroll(0);viewport.current?.scrollTo(0,0);}},h('option',{value:''},t('all')),...data.refs.map(item=>h('option',{key:item.fullName,value:item.fullName},`${t(item.kind)}: ${item.name}`))),h('div',{className:'gg-search'},h('input',{type:'search','aria-label':t('search'),placeholder:t('search'),value:query,onChange:e=>setQuery(e.target.value)}),query&&h(Button,{label:t('next')+' ('+matches.length+')',disabled:!matches.length,onClick:()=>{const index=matches.find(i=>i*ROW_HEIGHT>scroll+2)??matches[0];viewport.current?.scrollTo({top:index*ROW_HEIGHT});}},h(Icon,{name:'next',size:14})))),
+                  h('div',{className:'gg-scroll',ref:viewport,onScroll:e=>{setScroll(e.currentTarget.scrollTop);dismissPreview();const focused=e.currentTarget.querySelector('.gg-row:focus-visible');if(focused)showPreview(commits[Number(focused.dataset.index)],focused);},'aria-label':t('history')},commits.length?h('div',{style:{height:commits.length*ROW_HEIGHT,position:'relative'}},...commits.slice(visibleStart,visibleEnd).map((commit,n)=>{
+                    const index=visibleStart+n;
+                    return h('button',{type:'button',key:commit.hash,className:'gg-row '+(matches.includes(index)?'gg-match':''),style:{top:index*ROW_HEIGHT},'data-index':index,'aria-pressed':detail?.hash===commit.hash,'aria-label':commit.title+' · '+commit.author+' · '+commit.shortHash,'aria-describedby':preview?.commit.hash===commit.hash?previewId:undefined,onMouseEnter:e=>showPreview(commit,e.currentTarget),onMouseLeave:hidePreview,onFocus:e=>{if(e.currentTarget.matches(':focus-visible'))showPreview(commit,e.currentTarget);},onBlur:hidePreview,onClick:()=>{dismissPreview();openCommit(commit);}},
+                      h(Graph,{row:graph.rows[index],width:graph.width,head:data.head===commit.hash}),
+                      h('span',{className:'gg-commit-line'},h(RefBadges,{items:refsAt.get(commit.hash)||[],head:data.head===commit.hash,color:graph.rows[index].color,t,compact:true}),h('span',{className:'gg-subject'},commit.title)));
+                  })):h('div',{className:'gg-empty'},t('empty'))),
                   (busy==='refresh'||data.hasMore)&&h('div',{className:'gg-footer gg-muted gg-small'},busy==='refresh'?t('loading'):(limit<1000?h(Button,{label:t('more'),disabled:!!busy,onClick:()=>setLimit(Math.min(1000,limit+100))}):t('moreLimit')))))),
+            preview&&h(CommitPreview,{key:preview.commit.hash,value:preview,id:previewId,items:refsAt.get(preview.commit.hash)||[],head:data.head===preview.commit.hash,color:graph.rows[commits.findIndex(commit=>commit.hash===preview.commit.hash)]?.color||0,t,fullDate,onEnter:keepPreview,onLeave:hidePreview,onClose:dismissPreview}),
             detail&&h('aside',{className:'gg-details','aria-label':t('detail')},h('div',{className:'gg-head'},h('span',{style:{flex:1},className:'gg-small'},detail.working?t(detail.staged?'stagedDiff':'workingDiff'):t('detail')),h(Button,{label:t('close'),onClick:closeDetail},h(Icon,{name:'close'}))),
               h('div',{className:'gg-detail-body'},detail.loading?t('loading'):detail.error?h('div',{role:'alert'},detail.error):detail.working?h('strong',{className:'gg-path'},detail.title):h(React.Fragment,null,
                 h('h3',{className:'gg-detail-title'},detail.title),h('dl',{className:'gg-kv'},h('dt',null,'Hash'),h('dd',{className:'gg-mono gg-hash'},h('span',null,detail.hash),h(Button,{label:t(copied?'copied':'copy'),onClick:async()=>{try{await navigator.clipboard.writeText(detail.hash);setCopied(true);}catch(error){setNotice({error:true,text:error.message});}}},h(Icon,{name:copied?'check':'copy',size:14}))),h('dt',null,t('author')),h('dd',null,detail.author,' <',detail.email,'>'),h('dt',null,t('date')),h('dd',null,fullDate(detail.time))),detail.body&&h('div',{className:'gg-body'},detail.body),
