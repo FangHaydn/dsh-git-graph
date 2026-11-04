@@ -81,6 +81,31 @@ async function repository(t, generate = async () => { throw new Error('Unexpecte
   return { cwd, git, execute, put, commit };
 }
 
+async function trackingRepository(t, upstream = 'main') {
+  const repo = await repository(t);
+  await repo.put('tracked.txt', 'base\n');
+  const base = await repo.commit('Base');
+  const root = path.dirname(repo.cwd);
+  const remote = path.join(root, 'remote.git');
+  await repo.git(['init', '--bare', '--initial-branch=main', remote]);
+  const remoteGit = (args, options) => run(remote, args, options);
+  await repo.git(['remote', 'add', 'origin', remote]);
+  await repo.git(['push', '--set-upstream', 'origin', `HEAD:refs/heads/${upstream}`]);
+  const peer = path.join(root, 'peer');
+  await repo.git(['clone', '--no-hardlinks', '--branch', upstream, remote, peer]);
+  const peerGit = (args, options) => run(peer, args, options);
+  await peerGit(['config', 'commit.gpgsign', 'false']);
+  await peerGit(['config', 'core.hooksPath', path.join(root, 'empty-hooks')]);
+  const remoteCommit = async text => {
+    await writeFile(path.join(peer, 'remote.txt'), text);
+    await peerGit(['add', '--all']);
+    await peerGit(['commit', '-m', 'Remote change']);
+    await peerGit(['push', 'origin', `HEAD:refs/heads/${upstream}`]);
+    return (await peerGit(['rev-parse', 'HEAD'])).stdout.trim();
+  };
+  return { ...repo, base, remote, remoteGit, remoteCommit };
+}
+
 function file(snapshot, name) {
   const entry = snapshot.files.find(entry => entry.path === name);
   assert.ok(entry, `Expected status entry for ${JSON.stringify(name)}`);
@@ -609,6 +634,154 @@ test('fetch reports missing or unavailable remotes and releases its lock for ret
   await local.git(['remote', 'set-url', 'origin', remote.cwd]);
   await local.execute({ action: 'fetch' });
   assert.equal((await local.git(['rev-parse', 'refs/remotes/origin/main'])).stdout.trim(), head);
+});
+
+test('sync snapshots report ahead commits and sync pushes them to the tracking remote', async t => {
+  const repo = await trackingRepository(t);
+  await repo.git(['remote', 'rename', 'origin', 'publishing']);
+  let snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/publishing/main', 0, 0]);
+  await repo.put('tracked.txt', 'local commit\n');
+  const head = await repo.commit('Local change');
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/publishing/main', 1, 0]);
+  await repo.execute({ action: 'sync' });
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), head);
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.equal(snapshot.head, head);
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/publishing/main', 0, 0]);
+});
+
+test('sync snapshots update behind after fetch and sync fetches again before fast-forwarding', async t => {
+  const repo = await trackingRepository(t);
+  await repo.remoteCommit('first remote commit\n');
+  await repo.remoteCommit('second remote commit\n');
+  let snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.ahead, snapshot.behind], [0, 0], 'Snapshot uses the last fetched upstream');
+  await repo.execute({ action: 'fetch' });
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/origin/main', 0, 2]);
+  const head = await repo.remoteCommit('third remote commit\n');
+  // A broken unrelated remote makes fetching --all during sync fail.
+  await repo.git(['remote', 'add', 'unused', path.join(path.dirname(repo.cwd), 'missing.git')]);
+  await repo.git(['config', 'merge.ff', 'false']);
+  await repo.execute({ action: 'sync' });
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.equal(snapshot.head, head);
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/origin/main', 0, 0]);
+  assert.deepEqual(snapshot.files, []);
+  assert.equal(await readFile(path.join(repo.cwd, 'remote.txt'), 'utf8'), 'third remote commit\n');
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), head);
+});
+
+test('sync rejects divergence without changing HEAD, index, worktree or remote and releases its lock', async t => {
+  const repo = await trackingRepository(t);
+  const remoteHead = await repo.remoteCommit('remote change\n');
+  await repo.put('tracked.txt', 'local commit\n');
+  const head = await repo.commit('Local change');
+  await repo.put('tracked.txt', 'staged contents\n');
+  await repo.git(['add', 'tracked.txt']);
+  await repo.put('tracked.txt', 'working contents\n');
+  await repo.put('untracked.txt', 'untracked contents\n');
+  await repo.git(['config', 'pull.rebase', 'true']);
+  await repo.git(['config', 'pull.ff', 'false']);
+  await repo.git(['config', 'merge.ff', 'false']);
+  const index = (await repo.git(['ls-files', '--stage'])).stdout;
+  const status = (await repo.git(['status', '--porcelain=v1', '-z'])).stdout;
+  await assert.rejects(repo.execute({ action: 'sync' }), /fast.forward|diverg/i);
+  const snapshot = await repo.execute({ action: 'snapshot' });
+  assert.equal(snapshot.head, head);
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/origin/main', 1, 1]);
+  assert.equal((await repo.git(['ls-files', '--stage'])).stdout, index);
+  assert.equal((await repo.git(['status', '--porcelain=v1', '-z'])).stdout, status);
+  assert.equal(await readFile(path.join(repo.cwd, 'tracked.txt'), 'utf8'), 'working contents\n');
+  assert.equal(await readFile(path.join(repo.cwd, 'untracked.txt'), 'utf8'), 'untracked contents\n');
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), remoteHead);
+  assert.equal((await repo.git(['rev-parse', '--verify', 'MERGE_HEAD'], { allowFailure: true })).code, 128);
+  await repo.execute({ action: 'branch', name: 'after-sync-failure', hash: head });
+});
+
+test('sync snapshots use null and zero counts without an upstream, detached or unborn', async t => {
+  const repo = await trackingRepository(t);
+  await repo.git(['branch', '--unset-upstream']);
+  let snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], [null, 0, 0]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /upstream|tracking/i);
+  await repo.git(['branch', '--set-upstream-to=origin/main']);
+  await repo.git(['switch', '--detach', repo.base]);
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], [null, 0, 0]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /branch|detached/i);
+  await repo.git(['symbolic-ref', 'HEAD', 'refs/heads/unborn']);
+  await repo.git(['config', 'branch.unborn.remote', 'origin']);
+  await repo.git(['config', 'branch.unborn.merge', 'refs/heads/main']);
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.equal(snapshot.head, null);
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], [null, 0, 0]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /branch|commit|unborn|upstream/i);
+  await repo.git(['switch', 'main']);
+  await repo.execute({ action: 'sync' });
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), repo.base);
+});
+
+test('sync snapshots tolerate a deleted upstream and sync rejects it until restored', async t => {
+  const repo = await trackingRepository(t);
+  await repo.remoteGit(['update-ref', '-d', 'refs/heads/main']);
+  await assert.rejects(repo.execute({ action: 'sync' }), /upstream|tracking/i);
+  const snapshot = await repo.execute({ action: 'snapshot' });
+  assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], [null, 0, 0]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /upstream|tracking/i);
+  assert.equal((await repo.git(['rev-parse', 'HEAD'])).stdout.trim(), repo.base);
+  assert.equal((await repo.remoteGit(['show-ref', '--verify', 'refs/heads/main'], { allowFailure: true })).code, 128);
+  await repo.remoteGit(['update-ref', 'refs/heads/main', repo.base]);
+  await repo.git(['fetch', 'origin']);
+  await repo.execute({ action: 'sync' });
+});
+
+test('sync rejects a local dot upstream and releases its lock for a remote tracking retry', async t => {
+  const repo = await trackingRepository(t);
+  await repo.git(['branch', 'local-source']);
+  await repo.git(['branch', '--set-upstream-to=local-source']);
+  assert.equal((await repo.git(['config', 'branch.main.remote'])).stdout.trim(), '.');
+  await assert.rejects(repo.execute({ action: 'sync' }), /remote|upstream|tracking/i);
+  assert.equal((await repo.git(['rev-parse', 'HEAD'])).stdout.trim(), repo.base);
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), repo.base);
+  await repo.git(['branch', '--set-upstream-to=origin/main']);
+  await repo.execute({ action: 'sync' });
+});
+
+test('sync pushes HEAD to a differently named upstream despite push.default and remote.push settings', async t => {
+  const repo = await trackingRepository(t, 'release');
+  await repo.remoteGit(['update-ref', 'refs/heads/main', repo.base]);
+  for (const [mode, pushRef] of [['current', null], ['nothing', null], ['matching', 'HEAD:refs/heads/redirected']]) {
+    await repo.git(['config', 'push.default', mode]);
+    if (pushRef) await repo.git(['config', 'remote.origin.push', pushRef]);
+    await repo.put('tracked.txt', `${mode} local commit\n`);
+    const head = await repo.commit(`Local change with push.default=${mode}`);
+    await repo.execute({ action: 'sync' });
+    assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/release'])).stdout.trim(), head);
+    assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), repo.base);
+    assert.equal((await repo.remoteGit(['show-ref', '--verify', 'refs/heads/redirected'], { allowFailure: true })).code, 128);
+    const snapshot = await repo.execute({ action: 'snapshot' });
+    assert.deepEqual([snapshot.upstream, snapshot.ahead, snapshot.behind], ['refs/remotes/origin/release', 0, 0]);
+  }
+});
+
+test('sync releases its lock after fetch and push failures so each can be retried', async t => {
+  const repo = await trackingRepository(t);
+  await repo.put('tracked.txt', 'local commit\n');
+  const head = await repo.commit('Local change');
+  const missing = path.join(path.dirname(repo.cwd), 'missing.git');
+  await repo.git(['remote', 'set-url', 'origin', missing]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /does not appear to be a git repository/);
+  assert.equal((await repo.git(['rev-parse', 'HEAD'])).stdout.trim(), head);
+  await repo.git(['remote', 'set-url', 'origin', repo.remote]);
+  await repo.git(['remote', 'set-url', '--push', 'origin', missing]);
+  await assert.rejects(repo.execute({ action: 'sync' }), /does not appear to be a git repository/);
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), repo.base);
+  await repo.git(['remote', 'set-url', '--push', 'origin', repo.remote]);
+  await repo.execute({ action: 'sync' });
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), head);
 });
 
 test('workspace lists the current branch and registered worktrees', async t => {

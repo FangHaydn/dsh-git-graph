@@ -40,13 +40,23 @@ export function parseWorktrees(text) {
 }
 
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b';
-const WRITE = new Set(['stage', 'unstage', 'commit', 'fetch', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
+const WRITE = new Set(['stage', 'unstage', 'commit', 'fetch', 'sync', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
 const ACTIONS = new Set(['snapshot', 'workspace', 'detail', 'diff', 'generate', ...WRITE]);
 const hashValue = v => { if (!/^[a-f0-9]{40,64}$/.test(v || '')) throw new Error('A full commit hash is required'); return v; };
 const fileValue = v => {
   if (typeof v !== 'string' || !v || v.includes('\0') || path.isAbsolute(v) || v.split(/[\\/]/).includes('..')) throw new Error('Invalid repository-relative path');
   return v;
 };
+
+async function trackingBranch(g) {
+  const head = await g(['symbolic-ref', '--quiet', 'HEAD'], { allowFailure: true });
+  if (head.code !== 0) return null;
+  const result = await g(['for-each-ref', '--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)', head.stdout.trim()]);
+  const [upstream, remote, remoteRef] = result.stdout.trimEnd().split('\0');
+  if (!upstream || !remote || remote === '.' || !remoteRef?.startsWith('refs/heads/')) return null;
+  const exists = await g(['show-ref', '--verify', upstream], { allowFailure: true });
+  return exists.code === 0 ? { upstream, remote, remoteRef } : null;
+}
 
 export class GitGraphService {
   constructor(run, generate, switchWorktree) { this.run = run; this.generate = generate; this.switchWorktree = switchWorktree; this.locks = new Set(); }
@@ -117,7 +127,10 @@ export class GitGraphService {
           if (!selectedRef) commits = commits.filter(commit => !stashInternals.has(commit.hash))
             .map(commit => stashParents.has(commit.hash) ? { ...commit, parents: stashParents.get(commit.hash) } : commit);
         }
+        const tracking = headHash.code === 0 ? await trackingBranch(g) : null;
+        const counts = tracking ? (await g(['rev-list', '--left-right', '--count', `HEAD...${tracking.upstream}`, '--'])).stdout.trim().split(/\s+/).map(Number) : [0, 0];
         return { repository: root, branch: head.stdout.trim() || (headHash.code === 0 ? headHash.stdout.trim().slice(0, 8) : 'HEAD'),
+          upstream: tracking?.upstream || null, ahead: counts[0], behind: counts[1],
           head: headHash.code === 0 ? headHash.stdout.trim() : null, files: parseStatus(status.stdout), refs, stashes, hasRemotes: !!remotes.stdout.trim(),
           commits: commits.slice(0, limit), hasMore: commits.length > limit };
       }
@@ -230,6 +243,19 @@ export class GitGraphService {
         const remotes = await g(['remote']);
         if (!remotes.stdout.trim()) throw new Error('No Git remotes configured. Add a remote and try again.');
         await g(['fetch', '--all']);
+        return { ok: true };
+      }
+      if (action === 'sync') {
+        let tracking = await trackingBranch(g);
+        const head = await g(['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
+        if (!tracking || head.code !== 0) throw new Error('The current branch has no available remote upstream. Configure its upstream and refresh.');
+        await g(['fetch', '--prune', '--', tracking.remote]);
+        tracking = await trackingBranch(g);
+        if (!tracking) throw new Error('The remote upstream no longer exists. Configure its upstream and refresh.');
+        const counts = (await g(['rev-list', '--left-right', '--count', `HEAD...${tracking.upstream}`, '--'])).stdout.trim().split(/\s+/).map(Number);
+        if (counts[0] && counts[1]) throw new Error('The current branch and its upstream have diverged. Merge or rebase them before syncing.');
+        if (counts[1]) await g(['merge', '--ff-only', '--no-autostash', '--', tracking.upstream]);
+        await g(['push', '--no-force', '--no-follow-tags', '--', tracking.remote, `HEAD:${tracking.remoteRef}`]);
         return { ok: true };
       }
       if (action === 'checkout') {

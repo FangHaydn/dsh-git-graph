@@ -538,6 +538,83 @@ test('fetch visibility follows configured remotes when the panel refreshes', asy
   assert.equal(fetchButton(), undefined, 'removing all remotes hides fetch after refresh');
 });
 
+test('sync is shown before fetch only when the current branch has upstream differences', async () => {
+  for (const [upstream, ahead, behind, visible] of [
+    [null, 0, 0, false], [null, 1, 1, false],
+    ['refs/remotes/origin/main', 0, 0, false],
+    ['refs/remotes/origin/main', 2, 0, true],
+    ['refs/remotes/origin/main', 0, 3, true],
+    ['refs/remotes/origin/main', 2, 3, true],
+    [undefined, undefined, undefined, false],
+  ]) {
+    const executor = createExecutor(), execute = executor.execute;
+    executor.execute = line => JSON.parse(line.replace('/local-git-graph ', '')).action === 'snapshot'
+      ? Promise.resolve(rpcSuccess({ ...snapshotValue(), upstream, ahead, behind })) : execute(line);
+    const runtime = mountPanel(executor);
+    await runtime.act();
+    const buttons = hostsOf(runtime).filter(node => node.type === 'button');
+    const sync = buttons.find(node => node.props['aria-label'] === 'sync');
+    assert.equal(!!sync, visible);
+    if (sync) {
+      assert.equal(buttons.indexOf(sync) + 1, buttons.findIndex(node => node.props['aria-label'] === 'fetch'));
+      assert.ok(sync.props.title.includes(`↑${ahead}`) && sync.props.title.includes(`↓${behind}`));
+      assert.ok(sync.props.title.includes('origin/main'));
+      assert.equal(nodeText(sync), '', 'sync is an icon-only button with an accessible label');
+    }
+  }
+});
+
+test('sync works while history is folded, prevents duplicate requests and disappears after success', async () => {
+  const executor = createExecutor(), execute = executor.execute, timers = fakeTimers();
+  let ahead = 2, finishSync;
+  executor.execute = line => {
+    const request = JSON.parse(line.replace('/local-git-graph ', ''));
+    const result = execute(line);
+    if (request.action === 'snapshot') return Promise.resolve(rpcSuccess({ ...snapshotValue(), upstream: 'refs/remotes/origin/main', ahead, behind: 0 }));
+    if (request.action === 'sync') return new Promise(resolve => { finishSync = () => { ahead = 0; resolve(rpcSuccess({ ok: true })); }; });
+    return result;
+  };
+  const runtime = mountPanel(executor, { timers });
+  await runtime.act();
+  const button = label => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === label);
+  await runtime.act(() => button('history').props.onClick());
+  const sync = button('sync');
+  await runtime.act(() => { sync.props.onClick(); sync.props.onClick(); });
+  assert.equal(executor.calls.filter(call => call.action === 'sync').length, 1);
+  assert.equal(button('syncing').props.disabled, true);
+  assert.equal(button('syncing').props['aria-busy'], true);
+  assert.ok(button('syncing').children[0].props.className.includes('gg-spinning'));
+  assert.equal(button('fetch').props.disabled, true);
+  finishSync();
+  await runtime.act();
+  assert.equal(button('sync'), undefined);
+  assert.equal(button('syncing'), undefined);
+  assert.equal(nodeText(hostsOf(runtime).find(node => node.props.className === 'gg-toast-portal')), 'synced');
+});
+
+test('sync errors remain visible, allow retry and explain old Host support', async () => {
+  for (const error of ['Upstream has diverged', 'Unknown Git Graph action']) {
+    const executor = createExecutor(), execute = executor.execute;
+    executor.execute = line => {
+      const request = JSON.parse(line.replace('/local-git-graph ', ''));
+      const result = execute(line);
+      if (request.action === 'snapshot') return Promise.resolve(rpcSuccess({ ...snapshotValue(), upstream: 'refs/remotes/origin/main', ahead: 1, behind: 1 }));
+      if (request.action === 'sync') return Promise.resolve({ ok: true, value: { result: { kind: 'error', text: error } } });
+      return result;
+    };
+    const runtime = mountPanel(executor);
+    await runtime.act();
+    const sync = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'sync');
+    await runtime.act(() => sync().props.onClick());
+    const alert = hostsOf(runtime).find(node => node.props.role === 'alert');
+    assert.ok(nodeText(alert).includes(error === 'Unknown Git Graph action' ? 'syncUnavailable' : error));
+    assert.equal(sync().props.disabled, false);
+    assert.equal(hostsOf(runtime).some(node => node.props.className === 'gg-toast-portal'), false);
+    await runtime.act(() => sync().props.onClick());
+    assert.equal(executor.calls.filter(call => call.action === 'sync').length, 2);
+  }
+});
+
 test('fetch visibility supports old Host snapshots while respecting explicit remote configuration', async () => {
   const remote = { kind: 'remote', name: 'origin/main', fullName: 'refs/remotes/origin/main', hash: 'c0' };
   const cases = [
