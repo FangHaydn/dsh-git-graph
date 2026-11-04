@@ -355,6 +355,101 @@ test('branches, lightweight and annotated tags, remote refs and stashes are expo
   await assert.rejects(execute({ action: 'stashApply', hash }), /Stash no longer exists/);
 });
 
+test('stash drop resolves shifted indices by hash and preserves the worktree, index and other stashes', async t => {
+  const { execute, git, put, commit, cwd } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  const head = await commit();
+  await put('tracked.txt', 'first stash\n');
+  await execute({ action: 'stashSave', message: 'first' });
+  const selected = (await execute({ action: 'snapshot' })).stashes[0];
+  await put('tracked.txt', 'second stash\n');
+  await execute({ action: 'stashSave', message: 'second' });
+  const other = (await execute({ action: 'snapshot' })).stashes[0];
+  await put('tracked.txt', 'staged\n');
+  await git(['add', 'tracked.txt']);
+  await put('tracked.txt', 'working\n');
+  await put('untracked.txt', 'keep\n');
+  const index = (await git(['ls-files', '--stage'])).stdout;
+  const status = (await git(['status', '--porcelain=v1', '-z'])).stdout;
+
+  assert.deepEqual(await execute({ action: 'stashDrop', hash: selected.hash }), { ok: true });
+  let snapshot = await execute({ action: 'snapshot' });
+  assert.deepEqual(snapshot.stashes.map(stash => stash.hash), [other.hash]);
+  assert.equal(snapshot.stashes[0].name, 'stash@{0}');
+  assert.equal(snapshot.commits.some(commit => commit.hash === selected.hash), false);
+  for (const hash of [selected.hash, head]) {
+    await assert.rejects(execute({ action: 'stashDrop', hash }), /Stash no longer exists/);
+  }
+  assert.deepEqual((await execute({ action: 'snapshot' })).stashes, snapshot.stashes);
+  await execute({ action: 'stashDrop', hash: other.hash });
+  snapshot = await execute({ action: 'snapshot' });
+  assert.deepEqual(snapshot.stashes, []);
+  assert.deepEqual(snapshot.commits.map(commit => commit.hash), [head]);
+  assert.equal((await git(['ls-files', '--stage'])).stdout, index);
+  assert.equal((await git(['status', '--porcelain=v1', '-z'])).stdout, status);
+  assert.equal(await readFile(path.join(cwd, 'tracked.txt'), 'utf8'), 'working\n');
+  assert.equal(await readFile(path.join(cwd, 'untracked.txt'), 'utf8'), 'keep\n');
+  assert.equal((await git(['rev-parse', 'HEAD'])).stdout.trim(), head);
+});
+
+test('stash history hides internal commits and edges while details retain real parents', async t => {
+  const { execute, git, put, commit } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  await commit();
+  await put('tracked.txt', 'ordinary\n');
+  const base = await commit('index on main: an ordinary commit');
+  await put('tracked.txt', 'staged\n');
+  await git(['add', 'tracked.txt']);
+  await put('tracked.txt', 'working\n');
+  await git(['stash', 'push', '-m', 'tracked only']);
+  await put('tracked.txt', 'next\n');
+  await put('untracked.txt', 'untracked\n');
+  await execute({ action: 'stashSave', message: 'with untracked' });
+
+  const snapshot = await execute({ action: 'snapshot' });
+  assert.equal(snapshot.stashes.length, 2);
+  assert.equal(snapshot.commits.length, 4, 'Only two stashes and two ordinary commits should appear');
+  assert.equal(snapshot.hasMore, false);
+  assert.ok(snapshot.commits.some(commit => commit.hash === base));
+  for (const stash of snapshot.stashes) {
+    const detail = await execute({ action: 'detail', hash: stash.hash });
+    assert.ok(detail.parents.length >= 2, 'Details retain index/untracked parents for comparison');
+    const row = snapshot.commits.find(commit => commit.hash === stash.hash);
+    assert.deepEqual(row.parents, [base], 'The graph connects a stash only to its base');
+    for (const internal of detail.parents.slice(1)) {
+      assert.equal(snapshot.commits.some(commit => commit.hash === internal), false);
+      assert.equal(snapshot.commits.some(commit => commit.parents.includes(internal)), false);
+    }
+  }
+  const filtered = await execute({ action: 'snapshot', ref: 'refs/heads/main' });
+  assert.equal(filtered.commits.length, 2);
+});
+
+test('stash internals do not consume the history limit or create a false hasMore', async t => {
+  const { execute, git, put, commit } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  const initial = await commit();
+  const tree = (await git(['rev-parse', 'HEAD^{tree}'])).stdout.trim();
+  let head = initial;
+  for (let index = 1; index < 49; index++) {
+    head = (await git(['commit-tree', tree, '-p', head], { input: `History ${index}\n` })).stdout.trim();
+  }
+  await git(['update-ref', 'refs/heads/main', head]);
+  await put('tracked.txt', 'saved\n');
+  await put('untracked.txt', 'untracked\n');
+  await execute({ action: 'stashSave' });
+  const snapshot = await execute({ action: 'snapshot', limit: 50 });
+  assert.equal(snapshot.commits.length, 50);
+  assert.equal(snapshot.hasMore, false, 'Hidden stash parents must not count as another page');
+  assert.ok(snapshot.commits.some(commit => commit.hash === initial), 'The full page includes the oldest ordinary commit');
+  await put('tracked.txt', 'another stash\n');
+  await execute({ action: 'stashSave' });
+  const next = await execute({ action: 'snapshot', limit: 50 });
+  assert.equal(next.commits.length, 50);
+  assert.equal(next.hasMore, true);
+  assert.equal((await execute({ action: 'snapshot', limit: 100 })).commits.length, 51);
+});
+
 test('log limits are bounded, hasMore is correct, and selecting a ref excludes other histories', async t => {
   const { execute, git, put, commit } = await repository(t);
   await put('tracked.txt', 'base\n');
@@ -459,6 +554,7 @@ test('unsafe repository paths, revisions, parent hashes and ref names are reject
     await assert.rejects(execute({ action: 'detail', hash, parent: unsafe }), /full commit hash/);
     await assert.rejects(execute({ action: 'checkout', hash: unsafe }), /full commit hash/);
     await assert.rejects(execute({ action: 'stashApply', hash: unsafe }), /full commit hash/);
+    await assert.rejects(execute({ action: 'stashDrop', hash: unsafe }), /full commit hash/);
   }
   for (const name of ['-option', '../outside', 'bad..name', 'bad name', 'bad~name', 'bad:ref', 'bad\\name', 'bad@{name', 'trailing/', '']) {
     for (const action of ['branch', 'tag']) {

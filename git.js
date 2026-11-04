@@ -26,7 +26,7 @@ export function parseLog(text) {
 }
 
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b';
-const WRITE = new Set(['stage', 'unstage', 'commit', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply']);
+const WRITE = new Set(['stage', 'unstage', 'commit', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
 const ACTIONS = new Set(['snapshot', 'detail', 'diff', 'generate', ...WRITE]);
 const hashValue = v => { if (!/^[a-f0-9]{40,64}$/.test(v || '')) throw new Error('A full commit hash is required'); return v; };
 const fileValue = v => {
@@ -57,7 +57,7 @@ export class GitGraphService {
           g(['status', '--porcelain=v1', '-z', '--untracked-files=all']),
           g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true }),
           g(['for-each-ref', '--format=%(objectname)%00%(*objectname)%00%(refname)%00%(symref)%00', 'refs/heads', 'refs/remotes', 'refs/tags']),
-          g(['stash', 'list', '--format=%H%x00%gd%x00%gs%x00%at%x00'])
+          g(['stash', 'list', '--format=%H%x00%gd%x00%gs%x00%at%x00%P%x00'])
         ]);
         const refs = [];
         const refFields = refsResult.stdout.split('\0');
@@ -67,10 +67,14 @@ export class GitGraphService {
           const kind = fullName.startsWith('refs/tags/') ? 'tag' : fullName.startsWith('refs/remotes/') ? 'remote' : 'branch';
           refs.push({ hash: peeled || hash, name: fullName.replace(/^refs\/(heads|remotes|tags)\//, ''), fullName, kind });
         }
-        const stashFields = stashResult.stdout.split('\0'), stashes = [];
-        for (let i = 0; i + 3 < stashFields.length; i += 4) {
+        const stashFields = stashResult.stdout.split('\0'), stashes = [], stashParents = new Map(), stashInternals = new Set();
+        for (let i = 0; i + 4 < stashFields.length; i += 5) {
           const hash = stashFields[i].trim();
-          if (hash) stashes.push({ hash, name: stashFields[i + 1], title: stashFields[i + 2], time: Number(stashFields[i + 3]) * 1000 });
+          if (!hash) continue;
+          stashes.push({ hash, name: stashFields[i + 1], title: stashFields[i + 2], time: Number(stashFields[i + 3]) * 1000 });
+          const parents = stashFields[i + 4].split(' ').filter(Boolean);
+          stashParents.set(hash, parents.slice(0, 1));
+          parents.slice(1).forEach(parent => stashInternals.add(parent));
         }
         const headHash = await g(['rev-parse', '--verify', 'HEAD'], { allowFailure: true });
         const selectedRef = request.ref ? refs.find(ref => ref.fullName === request.ref) : undefined;
@@ -78,8 +82,12 @@ export class GitGraphService {
         const revisions = selectedRef ? [selectedRef.fullName] : ['--all', ...(headHash.code === 0 ? ['HEAD'] : []), ...stashes.map(s => s.hash)];
         let commits = [];
         if (refs.length || stashes.length || headHash.code === 0) {
-          const log = await g(['log', '--topo-order', '-z', `--format=${LOG_FORMAT}`, `--max-count=${limit + 1}`, ...revisions, '--']);
+          // Stash index/untracked parents are implementation records, not history rows.
+          // Read past them before applying the visible limit and computing hasMore.
+          const log = await g(['log', '--topo-order', '-z', `--format=${LOG_FORMAT}`, `--max-count=${limit + 1 + (selectedRef ? 0 : stashInternals.size)}`, ...revisions, '--']);
           commits = parseLog(log.stdout);
+          if (!selectedRef) commits = commits.filter(commit => !stashInternals.has(commit.hash))
+            .map(commit => stashParents.has(commit.hash) ? { ...commit, parents: stashParents.get(commit.hash) } : commit);
         }
         return { repository: root, branch: head.stdout.trim() || (headHash.code === 0 ? headHash.stdout.trim().slice(0, 8) : 'HEAD'),
           head: headHash.code === 0 ? headHash.stdout.trim() : null, files: parseStatus(status.stdout), refs, stashes,
@@ -198,6 +206,16 @@ export class GitGraphService {
       if (action === 'stashSave') {
         const result = await g(['stash', 'push', '--include-untracked', '-m', String(request.message || 'Git Graph stash')]);
         return { ok: true, text: result.stdout };
+      }
+      if (action === 'stashDrop') {
+        const hash = hashValue(request.hash);
+        // Resolve the current reflog selector by hash: stash indices can shift
+        // while the details or confirmation dialog are open.
+        const stashes = await g(['stash', 'list', '--format=%H%x00%gd']);
+        const entry = stashes.stdout.split('\n').map(row => row.split('\0')).find(([value]) => value === hash);
+        if (!entry || !/^stash@\{\d+\}$/.test(entry[1])) throw new Error('Stash no longer exists; refresh');
+        await g(['stash', 'drop', entry[1]]);
+        return { ok: true };
       }
       if (action === 'stashApply') {
         const hash = hashValue(request.hash);

@@ -4,7 +4,7 @@ DSH 右侧栏的 Git 工作区和历史插件。打开右侧栏，点击「+」�
 
 - **当前修改**：工作区与暂存区列表，逐个或批量暂存／取消暂存；点击文件查看差异；提交输入框右侧提供 AI Conventional Commits 草稿生成；有暂存修改时仅提交暂存内容，暂存区为空时自动暂存全部改动（含未跟踪文件）后提交；支持 ⌘/Ctrl + Enter 提交。
 - **Git 历史**：展示真实父节点关系、合并线、标题、8 位 Hash、作者、时间、本地／远程分支、标签与 Stash；分支线按所属分支贯穿使用同一颜色，节点与其连线颜色一致；支持分支筛选、搜索定位、分页和虚拟列表。
-- **提交详情**：完整 Hash、作者邮箱、完整时间、提交正文、变更文件和文本差异；合并提交可选择任一父提交比较；支持复制 Hash、创建分支／标签、切换本地分支或分离 HEAD，以及储藏修改和应用 Stash（保留 Stash）。
+- **提交详情**：完整 Hash、作者邮箱、完整时间、提交正文、变更文件和文本差异；合并提交可选择任一父提交比较；支持复制 Hash、创建分支／标签、切换本地分支或分离 HEAD，以及储藏修改和应用 Stash（保留 Stash）；Stash 详情提供 Drop Stash 按钮，确认后删除储藏记录并刷新历史。
 - 两块主区域分别折叠；深色／浅色主题使用 DSH 主题变量；包含中文和英文界面。
 
 Git 仓库由当前 DSH 会话的工作目录确定，可在 Git 项目或其子目录中打开。非 Git 目录会显示提示。手动刷新、重新显示面板、切换窗口回到 DSH 都会刷新 Git 状态。
@@ -29,7 +29,7 @@ Git 调用通过 DSH subprocess / sandbox 服务执行，遵守当前会话的�
 {"action":"generate","locale":"zh"}
 ```
 
-写操作包括 stage、unstage、commit、checkout、branch、tag、stashSave、stashApply。工具描述要求在用户请求提交后才提交。界面的切换和 Stash 操作显示确认说明。没有实现 push/pull、rebase、cherry-pick、reset、丢弃修改或删除分支／标签／Stash。
+写操作包括 stage、unstage、commit、checkout、branch、tag、stashSave、stashApply、stashDrop。工具描述要求在用户明确请求后才提交或删除 Stash。stashDrop 接受完整 Stash Hash，执行时解析当前储藏序号；目标已不存在时返回错误。界面的切换和 Stash 操作显示确认说明。没有实现 push/pull、rebase、cherry-pick、reset、丢弃修改或删除分支／标签。
 
 本项目是独立实现，功能参考 VS Code Git Graph 的历史浏览方式；未复制该项目的源代码或图标。
 

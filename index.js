@@ -54,9 +54,9 @@ export function apply(ctx) {
       catch (error) { return { kind: 'error', text: error.message }; }
     } });
   ctx.tools.register({ name: 'git_graph',
-    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree. Commit only when the user requests it.',
+    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree. Stash drop deletes the selected saved stash. Commit or drop a stash only when the user requests it.',
     parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: {
-      action: { type: 'string', enum: ['snapshot', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply'] },
+      action: { type: 'string', enum: ['snapshot', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'checkout', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop'] },
       limit: { type: 'integer', description: 'History count, 50–1000; default 100.' },
       ref: { type: 'string', description: 'Full refs/heads, refs/remotes or refs/tags name for history filtering.' },
       hash: { type: 'string', description: 'Full commit or stash hash.' },
