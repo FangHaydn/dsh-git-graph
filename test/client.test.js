@@ -6,6 +6,56 @@ import test from 'node:test';
 const source = await readFile(new URL('../client.js', import.meta.url), 'utf8');
 const ID = '@local/dsh-git-graph';
 
+function loadSplitter(mainHeight = 600, changesHeight = 240) {
+  const listeners = new Map(), ratios = [], states = [];
+  const cleanup = { current: null };
+  const context = {
+    mainRef: { current: { getBoundingClientRect: () => ({ height: mainHeight }) } },
+    changesRef: { current: { getBoundingClientRect: () => ({ height: changesHeight }) } },
+    resizeCleanup: cleanup, dismissPreview: () => {},
+    useCallback: fn => fn, useEffect: () => {},
+    setChangesRatio: value => ratios.push(value), setResizing: value => states.push(value),
+    window: {
+      addEventListener: (name, fn) => listeners.set(name, fn),
+      removeEventListener: name => listeners.delete(name),
+    },
+  };
+  const start = source.indexOf('          const clampSplit=');
+  const end = source.indexOf('          const group=', start);
+  const controls = vm.runInNewContext(source.slice(start, end) + '\n({startResize,resizeByKey});', context);
+  return { ...controls, listeners, ratios, states, cleanup };
+}
+
+test('history splitter clamps drag height and removes listeners on release or cancellation', () => {
+  for (const finish of ['pointerup', 'pointercancel']) {
+    const splitter = loadSplitter();
+    splitter.startResize({ button: 0, clientY: 100, preventDefault() {} });
+    assert.equal(splitter.states[0], true);
+    splitter.listeners.get('pointermove')({ clientY: 160, preventDefault() {} });
+    assert.equal(splitter.ratios.at(-1), 0.5);
+    splitter.listeners.get('pointermove')({ clientY: 2000, preventDefault() {} });
+    assert.equal(splitter.ratios.at(-1), 460 / 600);
+    splitter.listeners.get('pointermove')({ clientY: -2000, preventDefault() {} });
+    assert.equal(splitter.ratios.at(-1), 96 / 600);
+    splitter.listeners.get(finish)();
+    assert.equal(splitter.states.at(-1), false);
+    assert.equal(splitter.listeners.size, 0);
+    assert.equal(splitter.cleanup.current, null);
+  }
+});
+
+test('history splitter supports arrow keys and ignores secondary pointer buttons', () => {
+  const splitter = loadSplitter();
+  splitter.startResize({ button: 2 });
+  assert.equal(splitter.listeners.size, 0);
+  splitter.resizeByKey({ key: 'ArrowDown', preventDefault() {} });
+  assert.equal(splitter.ratios.at(-1), 256 / 600);
+  splitter.resizeByKey({ key: 'ArrowUp', shiftKey: true, preventDefault() {} });
+  assert.equal(splitter.ratios.at(-1), 192 / 600);
+  splitter.resizeByKey({ key: 'Enter' });
+  assert.equal(splitter.ratios.length, 2);
+});
+
 function loadClient() {
   let plugin;
   const slots = new Map(), types = [], optional = [], calls = [];
