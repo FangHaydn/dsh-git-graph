@@ -579,6 +579,7 @@ test('unsafe repository paths, revisions, parent hashes and ref names are reject
     await assert.rejects(execute({ action: 'detail', hash, parent: unsafe }), /full commit hash/);
     await assert.rejects(execute({ action: 'checkout', hash: unsafe }), /full commit hash/);
     await assert.rejects(execute({ action: 'stashApply', hash: unsafe }), /full commit hash/);
+    await assert.rejects(execute({ action: 'stashPop', hash: unsafe }), /full commit hash/);
     await assert.rejects(execute({ action: 'stashDrop', hash: unsafe }), /full commit hash/);
   }
   for (const name of ['-option', '../outside', 'bad..name', 'bad name', 'bad~name', 'bad:ref', 'bad\\name', 'bad@{name', 'trailing/', '']) {
@@ -837,4 +838,108 @@ test('stage and unstage treat Git pathspec syntax and option-looking filenames l
     await execute({ action: 'unstage', paths: [name] });
     assert.equal((await execute({ action: 'snapshot' })).files.some(entry => entry.staged), false);
   }
+});
+
+test('branch deletion refuses the current or unmerged branch and deletes only merged branches', async t => {
+  const { execute, put, commit, git } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  const base = await commit('Base');
+  await execute({ action: 'branch', name: 'merged-copy', hash: base });
+  await execute({ action: 'branch', name: 'unmerged', hash: base });
+  await git(['switch', 'unmerged']);
+  await put('tracked.txt', 'unmerged work\n');
+  await commit('Unmerged work');
+  await git(['switch', 'main']);
+
+  await assert.rejects(execute({ action: 'deleteBranch', name: 'main' }), /checked-out/i);
+  assert.deepEqual(await execute({ action: 'deleteBranch', name: 'merged-copy' }), { ok: true, name: 'merged-copy' });
+  assert.equal((await git(['show-ref', '--verify', 'refs/heads/merged-copy'], { allowFailure: true })).code, 128);
+  await assert.rejects(execute({ action: 'deleteBranch', name: 'unmerged' }), /not fully merged/i);
+  assert.equal((await git(['show-ref', '--verify', 'refs/heads/unmerged'])).code, 0, 'Unmerged branch is preserved');
+  await assert.rejects(execute({ action: 'deleteBranch', name: 'missing' }), /no longer exists/i);
+  await assert.rejects(execute({ action: 'deleteBranch', name: '-bad' }), /Invalid ref name/i);
+});
+
+test('tags can be pushed to a remote and deleted locally', async t => {
+  const local = await repository(t), remote = await repository(t);
+  await local.put('tracked.txt', 'base\n');
+  const base = await local.commit('Base');
+  await remote.put('remote.txt', 'remote\n');
+  await remote.commit('Remote');
+  await local.execute({ action: 'tag', name: 'v1', hash: base });
+  await assert.rejects(local.execute({ action: 'pushTag', name: 'v1' }), /No Git remotes/i);
+  await local.git(['remote', 'add', 'origin', remote.cwd]);
+  assert.deepEqual(await local.execute({ action: 'pushTag', name: 'v1' }), { ok: true, name: 'v1', remote: 'origin' });
+  assert.equal((await remote.git(['rev-parse', 'refs/tags/v1'])).stdout.trim(), base);
+  await local.execute({ action: 'deleteTag', name: 'v1' });
+  assert.equal((await local.git(['show-ref', '--verify', 'refs/tags/v1'], { allowFailure: true })).code, 128);
+  await assert.rejects(local.execute({ action: 'deleteTag', name: 'v1' }), /no longer exists/i);
+});
+
+test('pushBranch and pullBranch move commits between the local branch and its upstream', async t => {
+  const repo = await trackingRepository(t);
+  const remoteHead = await repo.remoteCommit('remote change\n');
+  await repo.execute({ action: 'fetch' });
+  assert.deepEqual(await repo.execute({ action: 'pullBranch', name: 'main' }), { ok: true, branch: 'main' });
+  assert.equal((await repo.git(['rev-parse', 'HEAD'])).stdout.trim(), remoteHead, 'pull fast-forwards to the upstream');
+
+  await repo.put('tracked.txt', 'local change\n');
+  const head = await repo.commit('Local change');
+  const pushed = await repo.execute({ action: 'pushBranch', name: 'main' });
+  assert.equal(pushed.ok, true);
+  assert.equal(pushed.remote, 'origin');
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/main'])).stdout.trim(), head, 'push advances the remote branch');
+  await assert.rejects(repo.execute({ action: 'pushBranch', name: 'missing' }), /no longer exists/i);
+
+  // Pushing a branch without an upstream creates the remote branch and configures tracking.
+  await repo.git(['branch', 'newtopic']);
+  await repo.execute({ action: 'pushBranch', name: 'newtopic' });
+  assert.equal((await repo.remoteGit(['rev-parse', 'refs/heads/newtopic'])).stdout.trim(), head);
+  const topic = (await repo.execute({ action: 'snapshot' })).refs.find(ref => ref.kind === 'branch' && ref.name === 'newtopic');
+  assert.equal(topic.remote, 'origin');
+  assert.equal(topic.remoteRef, 'refs/heads/newtopic');
+});
+
+test('remote branch deletion and local/remote deletion keep the local copy safe when unmerged', async t => {
+  const repo = await trackingRepository(t);
+  await repo.git(['branch', 'topic']);
+  await repo.git(['push', '--set-upstream', 'origin', 'topic']);
+  let snapshot = await repo.execute({ action: 'snapshot' });
+  const topic = snapshot.refs.find(ref => ref.kind === 'branch' && ref.name === 'topic');
+  assert.equal(topic.remote, 'origin');
+  assert.equal(topic.remoteRef, 'refs/heads/topic');
+
+  await repo.execute({ action: 'deleteRemoteBranch', remoteRef: 'refs/remotes/origin/topic' });
+  assert.equal((await repo.remoteGit(['show-ref', '--verify', 'refs/heads/topic'], { allowFailure: true })).code, 128);
+  assert.equal((await repo.git(['show-ref', '--verify', 'refs/heads/topic'])).code, 0, 'local branch is untouched');
+
+  await repo.git(['push', 'origin', 'refs/heads/topic:refs/heads/topic']);
+  await repo.execute({ action: 'deleteBranchEverywhere', name: 'topic' });
+  assert.equal((await repo.git(['show-ref', '--verify', 'refs/heads/topic'], { allowFailure: true })).code, 128);
+  assert.equal((await repo.remoteGit(['show-ref', '--verify', 'refs/heads/topic'], { allowFailure: true })).code, 128);
+
+  await repo.git(['switch', '-c', 'unmerged']);
+  await repo.put('tracked.txt', 'unmerged work\n');
+  await repo.commit('Unmerged work');
+  await repo.git(['switch', 'main']);
+  await repo.git(['push', 'origin', 'refs/heads/unmerged:refs/heads/unmerged']);
+  await repo.git(['branch', '--set-upstream-to=origin/unmerged', 'unmerged']);
+  await assert.rejects(repo.execute({ action: 'deleteBranchEverywhere', name: 'unmerged' }), /not merged into the current branch/i);
+  assert.equal((await repo.git(['show-ref', '--verify', 'refs/heads/unmerged'])).code, 0, 'local branch stays');
+  assert.equal((await repo.remoteGit(['show-ref', '--verify', 'refs/heads/unmerged'])).code, 0, 'remote branch is not deleted when local deletion is unsafe');
+  snapshot = await repo.execute({ action: 'snapshot' });
+  assert.equal(snapshot.refs.some(ref => ref.name === 'unmerged'), true);
+});
+
+test('stash pop applies the changes and removes the stash entry', async t => {
+  const { execute, put, commit, cwd } = await repository(t);
+  await put('tracked.txt', 'base\n');
+  await commit();
+  await put('tracked.txt', 'stashed contents\n');
+  await execute({ action: 'stashSave', message: 'pop me' });
+  const stash = (await execute({ action: 'snapshot' })).stashes[0];
+  assert.deepEqual(await execute({ action: 'stashPop', hash: stash.hash }), { ok: true });
+  assert.equal(await readFile(path.join(cwd, 'tracked.txt'), 'utf8'), 'stashed contents\n');
+  assert.deepEqual((await execute({ action: 'snapshot' })).stashes, []);
+  await assert.rejects(execute({ action: 'stashPop', hash: stash.hash }), /Stash no longer exists/);
 });

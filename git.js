@@ -40,9 +40,15 @@ export function parseWorktrees(text) {
 }
 
 export const LOG_FORMAT = '%H%x00%P%x00%an%x00%ae%x00%at%x00%s%x00%b';
-const WRITE = new Set(['stage', 'unstage', 'commit', 'fetch', 'sync', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop']);
+const WRITE = new Set(['stage', 'unstage', 'commit', 'fetch', 'sync', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashPop', 'stashDrop',
+  'deleteBranch', 'deleteRemoteBranch', 'deleteBranchEverywhere', 'deleteTag', 'pushTag', 'pushBranch', 'pullBranch']);
 const ACTIONS = new Set(['snapshot', 'workspace', 'detail', 'diff', 'generate', ...WRITE]);
 const hashValue = v => { if (!/^[a-f0-9]{40,64}$/.test(v || '')) throw new Error('A full commit hash is required'); return v; };
+const refName = v => { const name = String(v ?? ''); if (!name || name.startsWith('-') || /[\0\r\n]/.test(name)) throw new Error('Invalid ref name'); return name; };
+const parseTracking = text => {
+  const ahead = /ahead (\d+)/.exec(text || ''), behind = /behind (\d+)/.exec(text || '');
+  return { ahead: ahead ? Number(ahead[1]) : 0, behind: behind ? Number(behind[1]) : 0, gone: /\bgone\b/.test(text || '') };
+};
 const fileValue = v => {
   if (typeof v !== 'string' || !v || v.includes('\0') || path.isAbsolute(v) || v.split(/[\\/]/).includes('..')) throw new Error('Invalid repository-relative path');
   return v;
@@ -51,11 +57,90 @@ const fileValue = v => {
 async function trackingBranch(g) {
   const head = await g(['symbolic-ref', '--quiet', 'HEAD'], { allowFailure: true });
   if (head.code !== 0) return null;
-  const result = await g(['for-each-ref', '--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)', head.stdout.trim()]);
+  return branchUpstream(g, head.stdout.trim());
+}
+
+async function branchUpstream(g, fullOrShortRef) {
+  const ref = fullOrShortRef.startsWith('refs/') ? fullOrShortRef : `refs/heads/${fullOrShortRef}`;
+  const result = await g(['for-each-ref', '--format=%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)', ref]);
   const [upstream, remote, remoteRef] = result.stdout.trimEnd().split('\0');
   if (!upstream || !remote || remote === '.' || !remoteRef?.startsWith('refs/heads/')) return null;
   const exists = await g(['show-ref', '--verify', upstream], { allowFailure: true });
   return exists.code === 0 ? { upstream, remote, remoteRef } : null;
+}
+
+async function remoteNames(g) {
+  return (await g(['remote'])).stdout.split('\n').map(name => name.trim()).filter(Boolean);
+}
+
+async function chooseRemote(g, requested) {
+  const remotes = await remoteNames(g);
+  if (!remotes.length) throw new Error('No Git remotes configured. Add a remote and try again.');
+  if (requested) {
+    const name = String(requested);
+    if (!remotes.includes(name)) throw new Error('The selected remote is no longer configured; refresh');
+    return name;
+  }
+  return remotes.includes('origin') ? 'origin' : remotes[0];
+}
+
+// A branch can be identified by its short name (resolve its upstream), a full
+// remote-tracking ref such as refs/remotes/origin/main, or an explicit remote plus
+// refs/heads ref. Only three-part, non-HEAD branch refs are accepted.
+async function resolveRemoteBranch(g, request) {
+  if (request.remoteRef && String(request.remoteRef).startsWith('refs/remotes/')) {
+    const rest = String(request.remoteRef).slice('refs/remotes/'.length);
+    const slash = rest.indexOf('/'), remote = rest.slice(0, slash), branch = rest.slice(slash + 1);
+    if (slash <= 0 || !branch || branch === 'HEAD') throw new Error('Invalid remote branch');
+    return { remote, remoteRef: `refs/heads/${branch}` };
+  }
+  if (request.remote && request.remoteRef) {
+    if (!String(request.remoteRef).startsWith('refs/heads/')) throw new Error('Invalid remote branch');
+    return { remote: String(request.remote), remoteRef: String(request.remoteRef) };
+  }
+  const name = refName(request.name);
+  await existingBranch(g, name);
+  const info = await branchUpstream(g, name);
+  if (info) return { remote: info.remote, remoteRef: info.remoteRef };
+  // No configured upstream: fall back to a remote-tracking ref with the same short name.
+  const refs = await g(['for-each-ref', '--format=%(refname)', 'refs/remotes']);
+  for (const full of refs.stdout.split('\n').map(line => line.trim()).filter(Boolean)) {
+    const rest = full.slice('refs/remotes/'.length), slash = rest.indexOf('/');
+    if (slash > 0 && rest.slice(slash + 1) === name && rest.slice(slash + 1) !== 'HEAD') {
+      return { remote: rest.slice(0, slash), remoteRef: `refs/heads/${name}` };
+    }
+  }
+  throw new Error('The branch has no remote counterpart.');
+}
+
+async function existingBranch(g, name) {
+  const exists = await g(['show-ref', '--verify', `refs/heads/${name}`], { allowFailure: true });
+  if (exists.code !== 0) throw new Error('Branch no longer exists; refresh');
+  return name;
+}
+
+// Deleting a branch must never touch the checked-out branch or one held by a worktree.
+async function assertBranchDeletable(g, name) {
+  const head = await g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true });
+  if (head.code === 0 && head.stdout.trim() === name) throw new Error('Cannot delete the currently checked-out branch');
+  const trees = parseWorktrees((await g(['worktree', 'list', '--porcelain', '-z'])).stdout);
+  if (trees.some(tree => tree.branch === name)) throw new Error('Cannot delete a branch checked out in a worktree');
+}
+
+// Removing both copies is only safe when the branch has no commits that the
+// current branch lacks; otherwise those commits would survive nowhere locally.
+async function assertMergedIntoHead(g, name) {
+  const result = await g(['merge-base', '--is-ancestor', `refs/heads/${name}`, 'HEAD'], { allowFailure: true });
+  if (result.code !== 0) throw new Error('Branch has commits that are not merged into the current branch; refusing to delete both the local and remote branch.');
+}
+
+// Deleting an already-absent remote ref is not an error: the desired end state
+// (no such ref on the remote) already holds.
+async function deleteRemoteRef(g, remote, ref) {
+  const result = await g(['push', '--delete', '--', remote, ref], { allowFailure: true });
+  if (result.code !== 0 && !/remote ref does not exist|unable to delete|does not match any/i.test(result.stderr)) {
+    throw new Error(result.stderr.trim() || 'Could not delete the remote ref');
+  }
 }
 
 export class GitGraphService {
@@ -93,17 +178,19 @@ export class GitGraphService {
         const [status, head, refsResult, stashResult, remotes] = await Promise.all([
           g(['status', '--porcelain=v1', '-z', '--untracked-files=all']),
           g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true }),
-          g(['for-each-ref', '--format=%(objectname)%00%(*objectname)%00%(refname)%00%(symref)%00', 'refs/heads', 'refs/remotes', 'refs/tags']),
+          g(['for-each-ref', '--format=%(objectname)%00%(*objectname)%00%(refname)%00%(symref)%00%(upstream)%00%(upstream:remotename)%00%(upstream:remoteref)%00%(upstream:track,nobracket)%00', 'refs/heads', 'refs/remotes', 'refs/tags']),
           g(['stash', 'list', '--format=%H%x00%gd%x00%gs%x00%at%x00%P%x00']),
           g(['remote'])
         ]);
         const refs = [];
         const refFields = refsResult.stdout.split('\0');
-        for (let i = 0; i + 3 < refFields.length; i += 4) {
+        for (let i = 0; i + 7 < refFields.length; i += 8) {
           const hash = refFields[i].trim(), peeled = refFields[i + 1], fullName = refFields[i + 2], symref = refFields[i + 3];
           if (!hash || symref) continue;
+          const upstream = refFields[i + 4].trim(), remoteName = refFields[i + 5].trim(), remoteRef = refFields[i + 6].trim(), track = refFields[i + 7];
           const kind = fullName.startsWith('refs/tags/') ? 'tag' : fullName.startsWith('refs/remotes/') ? 'remote' : 'branch';
-          refs.push({ hash: peeled || hash, name: fullName.replace(/^refs\/(heads|remotes|tags)\//, ''), fullName, kind });
+          refs.push({ hash: peeled || hash, name: fullName.replace(/^refs\/(heads|remotes|tags)\//, ''), fullName, kind,
+            ...(kind === 'branch' ? { upstream: upstream || null, remote: remoteName && remoteName !== '.' ? remoteName : null, remoteRef: remoteRef || null, ...parseTracking(track) } : {}) });
         }
         const stashFields = stashResult.stdout.split('\0'), stashes = [], stashParents = new Map(), stashInternals = new Set();
         for (let i = 0; i + 4 < stashFields.length; i += 5) {
@@ -258,6 +345,85 @@ export class GitGraphService {
         await g(['push', '--no-force', '--no-follow-tags', '--', tracking.remote, `HEAD:${tracking.remoteRef}`]);
         return { ok: true };
       }
+      if (action === 'pushBranch') {
+        const name = await existingBranch(g, refName(request.name));
+        const info = await branchUpstream(g, name);
+        let remote, remoteRef;
+        if (info) {
+          remote = await chooseRemote(g, info.remote);
+          remoteRef = info.remoteRef;
+        } else {
+          remote = await chooseRemote(g, request.remote);
+          remoteRef = request.remoteRef && String(request.remoteRef).startsWith('refs/heads/') ? String(request.remoteRef) : `refs/heads/${name}`;
+        }
+        // Never force: a rejected non-fast-forward push must be resolved by the user.
+        const args = ['push', '--no-force', '--no-follow-tags'];
+        if (!info) args.push('--set-upstream');
+        await g([...args, '--', remote, `refs/heads/${name}:${remoteRef}`]);
+        return { ok: true, name, remote, remoteRef };
+      }
+      if (action === 'pullBranch') {
+        const head = await g(['symbolic-ref', '--quiet', '--short', 'HEAD'], { allowFailure: true });
+        if (head.code !== 0) throw new Error('Check out a local branch before pulling');
+        const current = head.stdout.trim();
+        if (request.name && refName(request.name) !== current) throw new Error('Switch to the branch before pulling');
+        let tracking = await trackingBranch(g);
+        if (!tracking) throw new Error('The current branch has no available remote upstream. Configure its upstream and refresh.');
+        await g(['fetch', '--prune', '--', tracking.remote]);
+        tracking = await trackingBranch(g);
+        if (!tracking) throw new Error('The remote upstream no longer exists. Configure its upstream and refresh.');
+        const counts = (await g(['rev-list', '--left-right', '--count', `HEAD...${tracking.upstream}`, '--'])).stdout.trim().split(/\s+/).map(Number);
+        if (counts[0] && counts[1]) throw new Error('The current branch and its upstream have diverged. Merge or rebase them before pulling.');
+        if (counts[1]) await g(['merge', '--ff-only', '--no-autostash', '--', tracking.upstream]);
+        return { ok: true, branch: current };
+      }
+      if (action === 'deleteBranch') {
+        const name = await existingBranch(g, refName(request.name));
+        await assertBranchDeletable(g, name);
+        // -d refuses unmerged branches, so deletion cannot silently drop commits.
+        const result = await g(['branch', '-d', name], { allowFailure: true });
+        if (result.code !== 0) {
+          if (/not fully merged/i.test(result.stderr)) throw new Error('Branch is not fully merged; merge it or delete it manually first.');
+          throw new Error(result.stderr.trim() || 'Could not delete the branch');
+        }
+        return { ok: true, name };
+      }
+      if (action === 'deleteBranchEverywhere') {
+        const name = await existingBranch(g, refName(request.name));
+        await assertBranchDeletable(g, name);
+        await assertMergedIntoHead(g, name);
+        const target = await resolveRemoteBranch(g, request);
+        await chooseRemote(g, target.remote);
+        // Delete the local branch first: if it is unmerged, nothing is removed.
+        const result = await g(['branch', '-d', name], { allowFailure: true });
+        if (result.code !== 0) {
+          if (/not fully merged/i.test(result.stderr)) throw new Error('Branch is not fully merged; merge it or delete it manually first.');
+          throw new Error(result.stderr.trim() || 'Could not delete the local branch');
+        }
+        await deleteRemoteRef(g, target.remote, target.remoteRef);
+        return { ok: true, name, remote: target.remote, remoteRef: target.remoteRef };
+      }
+      if (action === 'deleteRemoteBranch') {
+        const target = await resolveRemoteBranch(g, request);
+        await chooseRemote(g, target.remote);
+        await deleteRemoteRef(g, target.remote, target.remoteRef);
+        return { ok: true, remote: target.remote, remoteRef: target.remoteRef };
+      }
+      if (action === 'deleteTag') {
+        const name = refName(request.name);
+        const exists = await g(['show-ref', '--verify', `refs/tags/${name}`], { allowFailure: true });
+        if (exists.code !== 0) throw new Error('Tag no longer exists; refresh');
+        await g(['tag', '-d', name]);
+        return { ok: true, name };
+      }
+      if (action === 'pushTag') {
+        const name = refName(request.name);
+        const exists = await g(['show-ref', '--verify', `refs/tags/${name}`], { allowFailure: true });
+        if (exists.code !== 0) throw new Error('Tag no longer exists; refresh');
+        const remote = await chooseRemote(g, request.remote);
+        await g(['push', '--no-force', '--', remote, `refs/tags/${name}`]);
+        return { ok: true, name, remote };
+      }
       if (action === 'checkout') {
         if (request.branch) {
           const name = String(request.branch);
@@ -292,6 +458,15 @@ export class GitGraphService {
         const stashes = await g(['stash', 'list', '--format=%H']);
         if (!stashes.stdout.split('\n').includes(hash)) throw new Error('Stash no longer exists; refresh');
         await g(['stash', 'apply', hash]);
+        return { ok: true };
+      }
+      if (action === 'stashPop') {
+        // pop applies and then drops the entry; resolve the current selector by hash.
+        const hash = hashValue(request.hash);
+        const stashes = await g(['stash', 'list', '--format=%H%x00%gd']);
+        const entry = stashes.stdout.split('\n').map(row => row.split('\0')).find(([value]) => value === hash);
+        if (!entry || !/^stash@\{\d+\}$/.test(entry[1])) throw new Error('Stash no longer exists; refresh');
+        await g(['stash', 'pop', entry[1]]);
         return { ok: true };
       }
     } finally { if (isWrite) this.locks.delete(root); }

@@ -538,14 +538,14 @@ test('fetch visibility follows configured remotes when the panel refreshes', asy
   assert.equal(fetchButton(), undefined, 'removing all remotes hides fetch after refresh');
 });
 
-test('sync is shown before fetch only when the current branch has upstream differences', async () => {
-  for (const [upstream, ahead, behind, visible] of [
-    [null, 0, 0, false], [null, 1, 1, false],
-    ['refs/remotes/origin/main', 0, 0, false],
-    ['refs/remotes/origin/main', 2, 0, true],
-    ['refs/remotes/origin/main', 0, 3, true],
-    ['refs/remotes/origin/main', 2, 3, true],
-    [undefined, undefined, undefined, false],
+test('history header keeps fetch but no longer renders a sync button', async () => {
+  for (const [upstream, ahead, behind] of [
+    [null, 0, 0], [null, 1, 1],
+    ['refs/remotes/origin/main', 0, 0],
+    ['refs/remotes/origin/main', 2, 0],
+    ['refs/remotes/origin/main', 0, 3],
+    ['refs/remotes/origin/main', 2, 3],
+    [undefined, undefined, undefined],
   ]) {
     const executor = createExecutor(), execute = executor.execute;
     executor.execute = line => JSON.parse(line.replace('/local-git-graph ', '')).action === 'snapshot'
@@ -553,66 +553,118 @@ test('sync is shown before fetch only when the current branch has upstream diffe
     const runtime = mountPanel(executor);
     await runtime.act();
     const buttons = hostsOf(runtime).filter(node => node.type === 'button');
-    const sync = buttons.find(node => node.props['aria-label'] === 'sync');
-    assert.equal(!!sync, visible);
-    if (sync) {
-      assert.equal(buttons.indexOf(sync) + 1, buttons.findIndex(node => node.props['aria-label'] === 'fetch'));
-      assert.ok(sync.props.title.includes(`↑${ahead}`) && sync.props.title.includes(`↓${behind}`));
-      assert.ok(sync.props.title.includes('origin/main'));
-      assert.equal(nodeText(sync), '', 'sync is an icon-only button with an accessible label');
-    }
+    assert.equal(buttons.some(node => node.props['aria-label'] === 'sync'), false, 'sync control is removed');
+    assert.ok(buttons.some(node => node.props['aria-label'] === 'fetch'), 'fetch stays available');
   }
 });
 
-test('sync works while history is folded, prevents duplicate requests and disappears after success', async () => {
-  const executor = createExecutor(), execute = executor.execute, timers = fakeTimers();
-  let ahead = 2, finishSync;
+function contextSnapshot(refs, extra) {
+  return { ...snapshotValue(), hasRemotes: true, refs, ...(extra || {}) };
+}
+
+function menuItems(runtime) {
+  return hostsOf(runtime).filter(node => node.type === 'button' && typeof node.props.className === 'string' && node.props.className.split(' ').includes('gg-menu-item'));
+}
+
+function menuText(runtime) {
+  return menuItems(runtime).map(nodeText);
+}
+
+function menuHeadings(runtime) {
+  return hostsOf(runtime).filter(node => typeof node.props.className === 'string' && node.props.className.includes('gg-menu-heading')).map(nodeText);
+}
+
+function menuHost(runtime) {
+  return hostsOf(runtime).find(node => typeof node.props.className === 'string' && node.props.className.includes('gg-context-menu'));
+}
+
+function openMenu(runtime, index, point) {
+  return runtime.act(() => rowsOf(runtime)[index].props.onContextMenu({ preventDefault() {}, stopPropagation() {}, ...(point || { clientX: 24, clientY: 24 }) }));
+}
+
+function badge(runtime, kind, match) {
+  return hostsOf(runtime).find(node => node.type === 'span' && typeof node.props.className === 'string' && node.props.className.split(' ').includes('gg-badge') && node.props['data-kind'] === kind && String(node.props.title || '').includes(match));
+}
+
+function openBadgeMenu(runtime, kind, match, point) {
+  const target = badge(runtime, kind, match);
+  assert.ok(target, `badge ${kind}:${match} is rendered`);
+  assert.equal(typeof target.props.onContextMenu, 'function', 'badge exposes its own context menu');
+  return runtime.act(() => target.props.onContextMenu({ preventDefault() {}, stopPropagation() {}, ...(point || { clientX: 40, clientY: 60 }) }));
+}
+
+function contextPanel(refs, options, extra) {
+  const executor = createExecutor(), execute = executor.execute;
   executor.execute = line => {
     const request = JSON.parse(line.replace('/local-git-graph ', ''));
-    const result = execute(line);
-    if (request.action === 'snapshot') return Promise.resolve(rpcSuccess({ ...snapshotValue(), upstream: 'refs/remotes/origin/main', ahead, behind: 0 }));
-    if (request.action === 'sync') return new Promise(resolve => { finishSync = () => { ahead = 0; resolve(rpcSuccess({ ok: true })); }; });
-    return result;
+    if (request.action === 'snapshot') return Promise.resolve(rpcSuccess(contextSnapshot(refs, extra)));
+    return execute(line);
   };
-  const runtime = mountPanel(executor, { timers });
+  return { executor, runtime: mountPanel(executor, options) };
+}
+
+const MENU_REFS = [
+  { kind: 'branch', name: 'main', fullName: 'refs/heads/main', hash: 'c2', upstream: 'refs/remotes/origin/main', remote: 'origin', remoteRef: 'refs/heads/main', ahead: 1, behind: 0 },
+  { kind: 'branch', name: 'feature', fullName: 'refs/heads/feature', hash: 'c1', upstream: null, remote: null, remoteRef: null, ahead: 0, behind: 0 },
+  { kind: 'tag', name: 'v1', fullName: 'refs/tags/v1', hash: 'c0' },
+];
+
+test('commit row menu keeps only regular actions and anchors at the pointer', async () => {
+  const { runtime } = contextPanel(MENU_REFS);
   await runtime.act();
-  const button = label => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === label);
-  await runtime.act(() => button('history').props.onClick());
-  const sync = button('sync');
-  await runtime.act(() => { sync.props.onClick(); sync.props.onClick(); });
-  assert.equal(executor.calls.filter(call => call.action === 'sync').length, 1);
-  assert.equal(button('syncing').props.disabled, true);
-  assert.equal(button('syncing').props['aria-busy'], true);
-  assert.ok(button('syncing').children[0].props.className.includes('gg-spinning'));
-  assert.equal(button('fetch').props.disabled, true);
-  finishSync();
-  await runtime.act();
-  assert.equal(button('sync'), undefined);
-  assert.equal(button('syncing'), undefined);
-  assert.equal(nodeText(hostsOf(runtime).find(node => node.props.className === 'gg-toast-portal')), 'synced');
+  await openMenu(runtime, 2, { clientX: 123, clientY: 87 });
+  assert.deepEqual(menuText(runtime), ['createBranch', 'createTag', 'copy'], 'regular commit actions only');
+  assert.equal(menuHeadings(runtime).length, 0, 'row menu has no ref headings');
+  const rect = menuHost(runtime).props.style;
+  assert.equal(rect.left, 123, 'menu left follows the pointer');
+  assert.equal(rect.top, 87, 'menu top follows the pointer');
 });
 
-test('sync errors remain visible, allow retry and explain old Host support', async () => {
-  for (const error of ['Upstream has diverged', 'Unknown Git Graph action']) {
-    const executor = createExecutor(), execute = executor.execute;
-    executor.execute = line => {
-      const request = JSON.parse(line.replace('/local-git-graph ', ''));
-      const result = execute(line);
-      if (request.action === 'snapshot') return Promise.resolve(rpcSuccess({ ...snapshotValue(), upstream: 'refs/remotes/origin/main', ahead: 1, behind: 1 }));
-      if (request.action === 'sync') return Promise.resolve({ ok: true, value: { result: { kind: 'error', text: error } } });
-      return result;
-    };
-    const runtime = mountPanel(executor);
-    await runtime.act();
-    const sync = () => hostsOf(runtime).find(node => node.type === 'button' && node.props['aria-label'] === 'sync');
-    await runtime.act(() => sync().props.onClick());
-    const alert = hostsOf(runtime).find(node => node.props.role === 'alert');
-    assert.ok(nodeText(alert).includes(error === 'Unknown Git Graph action' ? 'syncUnavailable' : error));
-    assert.equal(sync().props.disabled, false);
-    assert.equal(hostsOf(runtime).some(node => node.props.className === 'gg-toast-portal'), false);
-    await runtime.act(() => sync().props.onClick());
-    assert.equal(executor.calls.filter(call => call.action === 'sync').length, 2);
-  }
+test('branch, tag and stash badges expose only their own actions', async () => {
+  const { runtime } = contextPanel(MENU_REFS, undefined, { stashes: [{ hash: 'c0', name: 'stash@{0}', title: 'saved work', time: 1700000000000 }] });
+  await runtime.act();
+
+  await openBadgeMenu(runtime, 'branch', 'main');
+  const branchItems = menuText(runtime);
+  assert.ok(branchItems.includes('pushBranch'), 'branch badge offers push');
+  assert.equal(branchItems.includes('createBranch'), false, 'branch badge hides regular commit actions');
+  assert.ok(menuHeadings(runtime).some(text => text.startsWith('branch: main')));
+
+  await openBadgeMenu(runtime, 'tag', 'v1');
+  assert.deepEqual(menuText(runtime), ['pushTag', 'deleteTag'], 'tag badge offers only tag actions');
+
+  await openBadgeMenu(runtime, 'stash', 'stash@{0}');
+  assert.deepEqual(menuText(runtime), ['stashApply', 'stashPop', 'stashDrop'], 'stash badge offers apply, pop and drop');
+  assert.ok(menuHeadings(runtime).some(text => text.includes('stash@{0}')));
+});
+
+test('branch badge offers local and remote deletion and confirms before deleting', async () => {
+  const refs = [...MENU_REFS,
+    { kind: 'branch', name: 'release', fullName: 'refs/heads/release', hash: 'c1', upstream: 'refs/remotes/origin/release', remote: 'origin', remoteRef: 'refs/heads/release', ahead: 0, behind: 0 }];
+  const { executor, runtime } = contextPanel(refs, { timers: fakeTimers() });
+  await runtime.act();
+  await openBadgeMenu(runtime, 'branch', 'release');
+  assert.ok(menuText(runtime).includes('deleteBranchEverywhere'), 'branch with upstream offers local+remote delete');
+  const remove = menuItems(runtime).find(node => nodeText(node) === 'deleteBranchEverywhere');
+  await runtime.act(() => remove.props.onClick());
+  const title = hostsOf(runtime).find(node => node.props.className === 'gg-modal-title');
+  assert.ok(nodeText(title).includes('deleteBranchEverywhere'), 'a confirmation dialog is required before deleting');
+  assert.ok(nodeText(hostsOf(runtime).find(node => typeof node.props.className === 'string' && node.props.className.includes('gg-modal-desc'))).includes('deleteBranchEverywhereConfirm'));
+  const form = hostsOf(runtime).find(node => node.type === 'form');
+  await runtime.act(() => form.props.onSubmit({ preventDefault() {} }));
+  assert.ok(executor.calls.some(call => call.action === 'deleteBranchEverywhere' && call.name === 'release'));
+});
+
+test('stash badge pop applies and drops with confirmation', async () => {
+  const { executor, runtime } = contextPanel(MENU_REFS, { timers: fakeTimers() }, { stashes: [{ hash: 'c0', name: 'stash@{0}', title: 'saved work', time: 1700000000000 }] });
+  await runtime.act();
+  await openBadgeMenu(runtime, 'stash', 'stash@{0}');
+  const pop = menuItems(runtime).find(node => nodeText(node) === 'stashPop');
+  await runtime.act(() => pop.props.onClick());
+  assert.ok(nodeText(hostsOf(runtime).find(node => node.props.className === 'gg-modal-title')).includes('stashPop'), 'pop asks for confirmation');
+  const form = hostsOf(runtime).find(node => node.type === 'form');
+  await runtime.act(() => form.props.onSubmit({ preventDefault() {} }));
+  assert.ok(executor.calls.some(call => call.action === 'stashPop' && call.hash === 'c0'));
 });
 
 test('fetch visibility supports old Host snapshots while respecting explicit remote configuration', async () => {

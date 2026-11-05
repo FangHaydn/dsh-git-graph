@@ -54,9 +54,9 @@ export function apply(ctx) {
       catch (error) { return { kind: 'error', text: error.message }; }
     } });
   ctx.tools.register({ name: 'git_graph',
-    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, fetch updates from all configured remotes without merging, sync the current branch with its remote upstream by fetching, fast-forwarding and pushing without force (diverged branches must be resolved first), generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree; switchWorktree changes this session working directory to one of the repository existing worktrees. Stash drop deletes the selected saved stash. Commit or drop a stash only when the user requests it.',
+    description: 'Inspect Git changes and commit history, read diffs, stage or unstage files, commit staged changes, fetch updates from all configured remotes without merging, sync the current branch with its remote upstream by fetching, fast-forwarding and pushing without force (diverged branches must be resolved first), generate a Conventional Commits draft from staged changes (or working tree changes when nothing is staged), and create branches, tags or stashes in the current session repository. Checkout and stash apply modify the working tree; switchWorktree changes this session working directory to one of the repository existing worktrees. Stash apply applies a saved stash, stash pop applies and drops it, and stash drop deletes it. Branch and tag maintenance is available through pushBranch, pullBranch, deleteBranch, deleteRemoteBranch, deleteBranchEverywhere, deleteTag and pushTag; destructive deletes refuse the checked-out branch and unmerged branches. Commit or drop a stash only when the user requests it.',
     parameters: { type: 'object', additionalProperties: false, required: ['action'], properties: {
-      action: { type: 'string', enum: ['snapshot', 'workspace', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'fetch', 'sync', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashDrop'] },
+      action: { type: 'string', enum: ['snapshot', 'workspace', 'detail', 'diff', 'stage', 'unstage', 'commit', 'generate', 'fetch', 'sync', 'checkout', 'switchWorktree', 'branch', 'tag', 'stashSave', 'stashApply', 'stashPop', 'stashDrop', 'pushBranch', 'pullBranch', 'deleteBranch', 'deleteRemoteBranch', 'deleteBranchEverywhere', 'deleteTag', 'pushTag'] },
       limit: { type: 'integer', description: 'History count, 50–1000; default 100.' },
       ref: { type: 'string', description: 'Full refs/heads, refs/remotes or refs/tags name for history filtering.' },
       hash: { type: 'string', description: 'Full commit or stash hash.' },
@@ -66,8 +66,10 @@ export function apply(ctx) {
       paths: { type: 'array', items: { type: 'string' }, description: 'Repository-relative files to stage or unstage; omitted selects all matching changes.' },
       staged: { type: 'boolean', description: 'Read index diff instead of worktree diff.' },
       message: { type: 'string', description: 'Commit message or stash title.' },
-      name: { type: 'string', description: 'New branch or tag name.' },
+      name: { type: 'string', description: 'New branch or tag name, or the local branch/tag to maintain.' },
       branch: { type: 'string', description: 'Existing local branch to check out; otherwise checkout detaches at hash.' },
+      remote: { type: 'string', description: 'Remote name for push, tag or remote-branch deletion; defaults to the upstream remote, origin, or the only remote.' },
+      remoteRef: { type: 'string', description: 'Remote branch ref such as refs/remotes/origin/main or refs/heads/main.' },
       worktreePath: { type: 'string', description: 'Absolute path from workspace worktrees; switchWorktree changes this session working directory to that registered worktree.' },
       locale: { type: 'string', description: 'Commit draft language, such as zh or en.' }
     } },
